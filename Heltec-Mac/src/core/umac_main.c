@@ -41,7 +41,7 @@
 #ifndef __wasm__
 #include <setjmp.h>
 #else
-/* MacMesh browser build: no setjmp in plain WebAssembly.  exit_error() just
+/* Heltec-Mac browser build: no setjmp in plain WebAssembly.  exit_error() just
  * flags the stop; the current slice finishes and umac_loop() returns 1. */
 typedef int jmp_buf[1];
 #define setjmp(b) 0
@@ -76,7 +76,7 @@ static unsigned int g_int_controller_pending = 0;      /* list of pending interr
 static unsigned int g_int_controller_highest_int = 0;  /* Highest pending interrupt */
 
 uint8_t *_ram_base;
-unsigned int umac_ram_size = 128*1024;   /* MacMesh: set before umac_init() */
+unsigned int umac_ram_size = 128*1024;   /* Heltec-Mac: set before umac_init() */
 uint8_t *_rom_base;
 
 int overlay = 1;
@@ -149,7 +149,7 @@ void exit_error(char* fmt, ...)
 
 ////////////////////////////////////////////////////////////////////////////////
 // VIA-related controls
-static uint8_t via_ra_val = 0, via_rb_val = 0x80;   /* MacMesh: for sound */
+static uint8_t via_ra_val = 0, via_rb_val = 0x80;   /* Heltec-Mac: for sound */
 
 static void     via_ra_changed(uint8_t val)
 {
@@ -249,7 +249,7 @@ static void     kbd_rx(uint8_t data)
         case KBD_CMD_GET_MODEL:
                 via_sr_rx(0x01 | (KBD_MODEL << 1));
                 break;
-        case KBD_CMD_INSTANT:   /* MacMesh: answered like Inquiry (used after a 0x79 keypad prefix) */
+        case KBD_CMD_INSTANT:   /* Heltec-Mac: answered like Inquiry (used after a 0x79 keypad prefix) */
         case KBD_CMD_INQUIRY:
                 if (kbd_pending_evt == -1) {
                         via_sr_rx(KBD_RSP_NULL);
@@ -279,7 +279,7 @@ static void     kbd_check_work(void)
         }
 }
 
-/* MacMesh: true when the keyboard can take another event (no queue in here) */
+/* Heltec-Mac: true when the keyboard can take another event (no queue in here) */
 int     umac_kbd_ready(void)
 {
         return kbd_pending_evt == -1;
@@ -702,7 +702,7 @@ static void     mouse_tick(void)
         scc_set_dcd(dcd_a, dcd_b);
 }
 
-/* MacMesh: absolute pointer for VNC.  Writes the new position into the
+/* Heltec-Mac: absolute pointer for VNC.  Writes the new position into the
  * Mac's low-memory cursor globals (MTemp, RawMouse) and asks the cursor
  * task to redraw (CrsrNew = CrsrCouple), the same trick Mini vMac uses.
  * Only done once the OS is running (RAM mapped at 0, globals sensible).
@@ -722,7 +722,7 @@ void    umac_mouse_abs(int x, int y, int button)
         RAM_WR8(0x8ce, RAM_RD8(0x8cf));               /* CrsrNew = CrsrCouple */
 }
 
-/* MacMesh: sound.  The Mac Plus plays 370 samples per video frame
+/* Heltec-Mac: sound.  The Mac Plus plays 370 samples per video frame
  * (~22.25 kHz) from the main sound buffer at memtop-0x300: the high byte
  * of each word is an unsigned 8-bit sample.  Sound is on when VIA PB7
  * (sndres) is low; VIA PA[2:0] is the volume (0-7).  (The alternate sound
@@ -757,7 +757,7 @@ void    umac_reset(void)
 /* Called by the disc code when an eject op happens. */
 void    umac_disc_ejected(void)
 {
-        /* MacMesh: the disk lives in flash and can't really leave; the Mac
+        /* Heltec-Mac: the disk lives in flash and can't really leave; the Mac
          * just sees an empty drive until it's restarted (Restart Mac
          * re-inserts it).  Upstream umac rebooted here. */
 }

@@ -380,16 +380,16 @@ bool MacMachine::finishRomUpload(std::string& msg) {
   RomInfo info = identifyRom(head, 8);   // just for the name
   if (!romLen) {
     if (upPos < 0x10000 || (upPos < MAC_ROM_SIZE && ck != MAC128K_CHECKSUM))
-      snprintf(b, sizeof b, "That file is %u bytes. Mac Mesh takes the Mac Plus v3 ROM (128 KB) or the Mac 128K/512K ROM (64 KB).", (unsigned)upPos);
+      snprintf(b, sizeof b, "That file is %u bytes. Heltec-Mac takes the Mac Plus v3 ROM (128 KB) or the Mac 128K/512K ROM (64 KB).", (unsigned)upPos);
     else
       snprintf(b, sizeof b, "Checksum doesn't match (header %08X) - the file looks damaged or isn't a Mac ROM.", (unsigned)ck);
     msg = b; return false;
   }
   if (ck != PLUS_V3_CHECKSUM && ck != MAC128K_CHECKSUM) {
     if (strcmp(info.name, "Unknown ROM") == 0)
-      snprintf(b, sizeof b, "That isn't a ROM Mac Mesh knows (checksum %08X). It takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", (unsigned)ck);
+      snprintf(b, sizeof b, "That isn't a ROM Heltec-Mac knows (checksum %08X). It takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", (unsigned)ck);
     else
-      snprintf(b, sizeof b, "That's a %s (%08X). Mac Mesh takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", info.name, (unsigned)ck);
+      snprintf(b, sizeof b, "That's a %s (%08X). Heltec-Mac takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", info.name, (unsigned)ck);
     msg = b; return false;
   }
   // good: copy staging -> orig (a 64 KB ROM is written twice)

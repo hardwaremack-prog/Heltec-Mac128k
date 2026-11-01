@@ -3,7 +3,7 @@
 #include "macfiles_js.h"   // script URLs carry a version, so a new firmware never runs with an old cached script
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mac Mesh</title>
+<title>Heltec-Mac</title>
 <style>
 :root{--bg:#d9d6cf;--panel:#f4f2ec;--ink:#1d1d1b;--mute:#6b6862;--line:#b9b5ac;--accent:#2f5f8a;--bad:#a33}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ section.wide{grid-column:1/-1}
 .disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \\2022  in use';color:var(--accent);font-weight:600}
 textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
 </style></head><body>
-<header><div id="dot"></div><b>MAC MESH</b><span id="hdr">connecting...</span></header>
+<header><div id="dot"></div><b>HELTEC-MAC</b><span id="hdr">connecting...</span></header>
 <main>
 <div id="screenBox">
  <div id="bezel"><canvas id="scr" width="512" height="342" tabindex="0"></canvas></div>
@@ -202,7 +202,7 @@ async function status(){try{const s=await (await fetch('/api/status')).json();la
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
- $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join MacMesh-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
+ $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join Heltec-Mac-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
 }catch(e){}}
 function esc(t){return t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 status();setInterval(status,2500);
@@ -238,7 +238,7 @@ $('diskUp').onclick=async()=>{const f=$('diskFile').files[0];if(!f){msg('Pick a 
  $('diskPick').hidden=true;$('progPick').hidden=true;msg('Opening '+f.name+'...');
  try{const r=await MacFiles.open(f.name,new Uint8Array(await f.arrayBuffer()));found=r.disks;progs=r.files||[];
   if(!found.length&&!progs.length){let t='No Mac disk or program found in '+f.name+'.';
-   if(r.other.length==1&&r.other[0]==f.name)t=f.name+' isn\'t a Mac disk image or an archive Mac Mesh can open.';
+   if(r.other.length==1&&r.other[0]==f.name)t=f.name+' isn\'t a Mac disk image or an archive Heltec-Mac can open.';
    if(r.notes.length)t+=' '+r.notes.join(' ');msg(t,1);return}
   if(found.length==1&&!progs.length){await sendDisks(found,true);return}
   if(found.length){$('diskList').innerHTML=found.map((d,i)=>'<label><input type="checkbox" name="dpick" value="'+i+'" checked> <span>'+diskLabel(d)+'</span></label>').join('');$('diskPick').hidden=false}

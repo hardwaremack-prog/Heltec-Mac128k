@@ -1,5 +1,5 @@
 /*
-  Mac Mesh  -  a Macintosh Plus on a Heltec WiFi LoRa 32 V3 (ESP32-S3), in your browser or over VNC.
+  Heltec-Mac  -  a Macintosh Plus on a Heltec WiFi LoRa 32 V3 (ESP32-S3), in your browser or over VNC.
 
   - 68000 CPU + Mac Plus hardware (umac by Matt Evans, Musashi by Karl Stenerud) on CPU core 1
   - Wi-Fi, web page with the live screen + sound (port 80, WebSocket 81), VNC (5900) on core 0
@@ -34,9 +34,9 @@
 #define PIN_LED 35
 #define PIN_BUTTON 0     // PRG button
 
-static const char* AP_SSID = "MacMesh-Setup";
-static const char* AP_PASS = "macmesh1";
-static const char* HOSTNAME = "macmesh";
+static const char* AP_SSID = "Heltec-Mac-Setup";
+static const char* AP_PASS = "heltecmac";
+static const char* HOSTNAME = "heltec-mac";
 static const size_t RUN_RESERVE = 56 * 1024;    // heap to keep free for Wi-Fi traffic, web page, VNC (Wi-Fi itself is already up)
 
 static PartitionArea romPart, diskPart;
@@ -128,11 +128,11 @@ static void drawOled() {
     }
   } else {
     char line[32];
-    oled.text(0, 0, "      MAC MESH       ", true);
+    oled.text(0, 0, "     HELTEC-MAC      ", true);
     if (apMode) {
       oled.text(0, 2, "WIFI SETUP:");
       oled.text(0, 3, AP_SSID);
-      oled.text(0, 4, "PASSWORD: MACMESH1");
+      oled.text(0, 4, "PASSWORD: HELTECMAC");
       oled.text(0, 5, "OPEN 192.168.4.1");
     } else {
       oled.text(0, 2, "OPEN IN A BROWSER:");
@@ -340,7 +340,7 @@ static void setupWeb() {
     uint32_t size = mm.lib[i].size, base = mm.lib[i].off;
     pauseEmu();
     mac.flushDisk();
-    String name = mm.lib[i].name[0] ? String(mm.lib[i].name) : String("macmesh-disk.img");
+    String name = mm.lib[i].name[0] ? String(mm.lib[i].name) : String("heltec-mac-disk.img");
     web.sendHeader("Content-Disposition", "attachment; filename=\"" + name + "\"");
     web.setContentLength(size);
     web.send(200, "application/octet-stream", "");
@@ -436,7 +436,7 @@ void setup() {
   refreshDiskInfo();
 
   oled.begin();
-  oled.clear(); oled.text(0, 0, "      MAC MESH       ", true); oled.text(0, 3, "JOINING WIFI..."); oled.show();
+  oled.clear(); oled.text(0, 0, "     HELTEC-MAC      ", true); oled.text(0, 3, "JOINING WIFI..."); oled.show();
 
   // Wi-Fi: saved network, else hotspot
   String ssid = prefs.getString("ssid", ""), pass = prefs.getString("pass", "");

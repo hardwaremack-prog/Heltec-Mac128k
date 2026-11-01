@@ -1,9 +1,9 @@
 // Checks the Mac keyboard wire bytes produced for VNC/browser key events (stubs out the emulator).
-// Build: g++ -std=c++17 -I../MacMesh/src/core -o tests/keys_test tests/keys_test.cpp ../MacMesh/mackeys.cpp   (run from host/)
+// Build: g++ -std=c++17 -I../Heltec-Mac/src/core -o tests/keys_test tests/keys_test.cpp ../Heltec-Mac/mackeys.cpp   (run from host/)
 #include <cstdio>
 #include <vector>
 #include <cstdint>
-#include "../../MacMesh/mackeys.h"
+#include "../../Heltec-Mac/mackeys.h"
 static std::vector<uint8_t> sent;
 extern "C" int umac_kbd_ready(void) { return 1; }
 extern "C" void umac_kbd_event(uint8_t sc, int down) { sent.push_back(down ? sc : sc | 0x80); }

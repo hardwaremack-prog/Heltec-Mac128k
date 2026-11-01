@@ -31,7 +31,7 @@
 #include "rom.h"
 
 #define ROM_ADDR        0x400000        /* Regular base (and 0, when overlay=0 */
-/* MacMesh: RAM size is chosen at runtime (it depends on how much memory the
+/* Heltec-Mac: RAM size is chosen at runtime (it depends on how much memory the
  * ESP32 has free), so it's a variable rather than a compile-time constant. */
 #ifdef __cplusplus
 extern "C" {

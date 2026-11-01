@@ -1,4 +1,4 @@
-# Mac Mesh
+# Heltec-Mac
 
 A Macintosh Plus running on a **Heltec WiFi LoRa 32 V3** (the Meshtastic board). Use it in a
 **web browser with sound**, or over **VNC**.
@@ -33,18 +33,18 @@ without the Mac, so the web page still works and you can pick a smaller size.
 
 ## 1. Flash it
 
-**Easiest: the Mac Mesh Flasher.** Download `flasher/MacMesh-Flasher.html` and open it in
+**Easiest: the Heltec-Mac Flasher.** Download `flasher/Heltec-Mac-Flasher.html` and open it in
 Chrome or Edge on a computer. The firmware is built into the page. Plug the board in, click
 **Connect**, pick the board, then **Flash**. It verifies the write, restarts the board, and has
 fixes for the common problems (drivers, cables, download mode) right on the page.
 
 **Or with Espressif's web tool:** open `https://espressif.github.io/esptool-js/`, click
-**Connect**, set the address to **0x0**, pick `firmware/MacMesh-HeltecV3.bin` and click
+**Connect**, set the address to **0x0**, pick `firmware/Heltec-Mac.bin` and click
 **Program**. Press the RST button when done.
 
 **Or with esptool:**
 ```
-esptool --chip esp32s3 write-flash 0x0 firmware/MacMesh-HeltecV3.bin
+esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin
 ```
 If the board doesn't show up, hold **PRG**, tap **RST**, release **PRG**, then try again.
 
@@ -52,9 +52,9 @@ Flashing an update later keeps your uploaded ROM and disk.
 
 ## 2. Get it on Wi-Fi
 
-On first boot the board makes a hotspot called **MacMesh-Setup** (password **macmesh1**). Join it,
+On first boot the board makes a hotspot called **Heltec-Mac-Setup** (password **heltecmac**). Join it,
 browse to **http://192.168.4.1**, pick your network under *Wi-Fi*, and click **Save & restart**.
-The OLED then shows the board's address on your network (it also answers to `macmesh.local`).
+The OLED then shows the board's address on your network (it also answers to `heltec-mac.local`).
 
 ## 3. Give it a ROM and a disk
 
@@ -156,8 +156,8 @@ Mac. (macOS Screen Sharing insists on a password, so use one of the others on a 
 ## Build from source
 
 Arduino IDE with the **esp32** core 3.x, board **Heltec WiFi LoRa 32(V3)**. Open
-`MacMesh/MacMesh.ino`. The `partitions.csv` in the sketch folder sets up a 1.9 MB app, the ROM area
-and a ~5.6 MB disk area. No extra libraries are needed. The emulator core is in `MacMesh/src/core`.
+`Heltec-Mac/Heltec-Mac.ino`. The `partitions.csv` in the sketch folder sets up a 1.9 MB app, the ROM area
+and a ~5.6 MB disk area. No extra libraries are needed. The emulator core is in `Heltec-Mac/src/core`.
 
 `host/` has a PC build of the same emulator, VNC and browser-view code for testing:
 ```
@@ -170,10 +170,10 @@ python3 tests/viewers_test.py                # (with --testrom --ram 128) checks
 
 ## Licences
 
-Mac Mesh's own code is yours to use. The firmware also includes code under other licences:
+Heltec-Mac's own code is yours to use. The firmware also includes code under other licences:
 - the replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II**
   © Christian Bauer, **GNU GPL v2**, so the firmware as a whole is distributed under GPL v2
-- **umac** © 2024 Matt Evans, MIT licence (`licenses/umac-LICENSE.txt`), with Mac Mesh changes:
+- **umac** © 2024 Matt Evans, MIT licence (`licenses/umac-LICENSE.txt`), with Heltec-Mac changes:
   RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling,
   support for the original 64 KB Mac 128K ROM (driver swap and drive-queue setup).
 - **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)

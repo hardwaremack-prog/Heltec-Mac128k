@@ -80,7 +80,7 @@ int     disc_pv_hook(uint8_t opcode)
 ////////////////////////////////////////////////////////////////////////////////
 // Basilisk II code follows
 
-/* MacMesh: every Mac address used here is kept inside RAM (wrapped like the
+/* Heltec-Mac: every Mac address used here is kept inside RAM (wrapped like the
  * real hardware), so a bad pointer from the Mac can't touch host memory. */
 #define MACRAM(addr)                    CLAMP_RAM_ADDR(ADR24(addr))
 #define WriteMacInt32(addr, val)        RAM_WR32(MACRAM(addr), val)
@@ -166,7 +166,7 @@ static sony_drinfo_t *get_drive_info(int num)
 void SonyInit(disc_descr_t discs[DISC_NUM_DRIVES])
 {
         drives[0].num = 0;
-        drives[0].to_be_mounted = discs[0].size > 0;   /* MacMesh: no disk = no mount */
+        drives[0].to_be_mounted = discs[0].size > 0;   /* Heltec-Mac: no disk = no mount */
         drives[0].read_only = discs[0].read_only;
         drives[0].data = discs[0].base;
         drives[0].size = discs[0].size;
@@ -194,7 +194,7 @@ static int16_t set_dsk_err(int16_t err)
 static int is_drive_number_free(int num)
 {
         uint32_t e = ReadMacInt32(0x308 + qHead);
-        int guard = 64;   /* MacMesh: never loop forever on a damaged queue */
+        int guard = 64;   /* Heltec-Mac: never loop forever on a damaged queue */
         while (e && guard--) {
                 uint32_t d = e - dsQLink;
                 if ((int)ReadMacInt16(d + dsQDrive) == num)
@@ -223,7 +223,7 @@ int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status)
         fprintf(stderr, "SonyOpen: DrvQHdr flags %04x head %08x tail %08x, status %08x\n",
                 ReadMacInt16(0x308), ReadMacInt32(0x30a), ReadMacInt32(0x30e), status);
 #endif
-        /* MacMesh: the original 64 KB Mac 128K ROM leaves the drive queue header
+        /* Heltec-Mac: the original 64 KB Mac 128K ROM leaves the drive queue header
          * (DrvQHdr at 0x308) uninitialised and expects .Sony's Open to set it up.
          * If it doesn't hold a sane queue, make it an empty one. */
         {
@@ -271,7 +271,7 @@ int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status)
         WriteMacInt8(info->status + dsMFMDisk, 0);
         //WriteMacInt8(info->status + dsTwoMegFmt, 0xff);	// 1.44MB (0 = 720K)
 
-        // If disk in drive...  (MacMesh: only when there is one; else the
+        // If disk in drive...  (Heltec-Mac: only when there is one; else the
         // Mac shows the question-mark disk and waits)
         if (info->size > 0) {
                 WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk

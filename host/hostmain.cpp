@@ -1,4 +1,4 @@
-// PC test harness for Mac Mesh: same emulator, VNC and browser-view code as the ESP32 build.
+// PC test harness for Heltec-Mac: same emulator, VNC and browser-view code as the ESP32 build.
 //   ./machost --rom plus.rom --disk system.img     import (like the web page) and run
 //   ./machost --testrom                            run a tiny built-in 68000 test program
 //   ./machost --frames 600 --dump out.pbm          headless: run N frames, save the screen
@@ -18,16 +18,16 @@
 #include <atomic>
 #include <vector>
 #include <string>
-#include "../MacMesh/macmachine.h"
-#include "../MacMesh/mackeys.h"
-#include "../MacMesh/macvnc.h"
-#include "../MacMesh/webview.h"
+#include "../Heltec-Mac/macmachine.h"
+#include "../Heltec-Mac/mackeys.h"
+#include "../Heltec-Mac/macvnc.h"
+#include "../Heltec-Mac/webview.h"
 extern "C" {
-#include "../MacMesh/src/core/m68k.h"
+#include "../Heltec-Mac/src/core/m68k.h"
 }
 #define PROGMEM
-#include "../MacMesh/webui.h"
-#include "../MacMesh/macfiles_js.h"
+#include "../Heltec-Mac/webui.h"
+#include "../Heltec-Mac/macfiles_js.h"
 
 // ---------------------------------------------------------------- flash stand-in (a file)
 struct FileArea : FlashArea {

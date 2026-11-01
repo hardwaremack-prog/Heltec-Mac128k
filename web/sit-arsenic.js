@@ -1,4 +1,4 @@
-// StuffIt "Arsenic" (method 15) decompressor for Mac Mesh.
+// StuffIt "Arsenic" (method 15) decompressor for Heltec-Mac.
 //
 // This file is a JavaScript port of XADStuffItArsenicHandle.m and parts of BWT.c from
 // XADMaster (The Unarchiver), Copyright (c) 2017-present MacPaw Way Ltd., and is

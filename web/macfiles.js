@@ -1,4 +1,4 @@
-// Mac Mesh: open archive and disk files in the browser and find the Mac disk images inside.
+// Heltec-Mac: open archive and disk files in the browser and find the Mac disk images inside.
 // Handles .zip, .7z (LZMA/LZMA2), StuffIt 1.5-4 ("SIT!", methods 0/1/2/13), BinHex 4 (.hqx),
 // MacBinary (.bin), gzip, DiskCopy 4.2 and raw disk images, nested in any combination.
 // Pure JavaScript, no libraries; the board page and Node tests both use it.
@@ -427,7 +427,7 @@ const MacFiles = (() => {
       return canonical(lens);
     }
     const first = d[0]; bp = 8;
-    if (first >> 4) throw new Error('This StuffIt archive uses a preset table (method 13, set ' + (first >> 4) + ') that Mac Mesh can\'t unpack yet');
+    if (first >> 4) throw new Error('This StuffIt archive uses a preset table (method 13, set ' + (first >> 4) + ') that Heltec-Mac can\'t unpack yet');
     const c1 = readLens(321), c2 = first & 8 ? c1 : readLens(321), coff = readLens((first & 7) + 10);
     const o = new Uint8Array(outLen); let q = 0, cur = c1;
     while (q < outLen) {

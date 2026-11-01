@@ -1,10 +1,10 @@
-// Mac Mesh browser build: the same emulator, run as WebAssembly in a web page.
+// Heltec-Mac browser build: the same emulator, run as WebAssembly in a web page.
 // The ROM and disk image live in memory buffers the page fills from files the user picks.
 #include <stdlib.h>
 #include <string.h>
 #include <string>
-#include "../MacMesh/macmachine.h"
-#include "../MacMesh/mackeys.h"
+#include "../Heltec-Mac/macmachine.h"
+#include "../Heltec-Mac/mackeys.h"
 
 #define EXPORT(n) __attribute__((export_name(#n)))
 

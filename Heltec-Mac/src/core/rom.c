@@ -42,7 +42,7 @@
 
 #define ROM_PLUSv3_VERSION      0x4d1f8172
 #define ROM_PLUSv3_SONYDRV      0x17d30
-/* MacMesh: the original 64 KB Mac 128K/512K ROM.  Its .Sony driver header is
+/* Heltec-Mac: the original 64 KB Mac 128K/512K ROM.  Its .Sony driver header is
  * at 0x1690; the 64 KB image is mirrored to fill the 128 KB ROM window. */
 #define ROM_128K_VERSION        0x28ba61ce
 #define ROM_128K_SONYDRV        0x1690

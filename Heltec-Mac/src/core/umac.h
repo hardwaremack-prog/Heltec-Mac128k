@@ -35,7 +35,7 @@ void    umac_reset(void);
 void    umac_opt_disassemble(int enable);
 void    umac_mouse(int deltax, int deltay, int button);
 void    umac_kbd_event(uint8_t scancode, int down);
-/* MacMesh additions */
+/* Heltec-Mac additions */
 int     umac_kbd_ready(void);
 void    umac_mouse_abs(int x, int y, int button);
 int     umac_crashed(void);

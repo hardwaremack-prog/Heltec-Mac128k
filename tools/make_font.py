@@ -1,4 +1,4 @@
-# Generates MacMesh/oledfont.h: a small 5x7 font for the OLED (uppercase, digits, a few symbols).
+# Generates Heltec-Mac/oledfont.h: a small 5x7 font for the OLED (uppercase, digits, a few symbols).
 G = {
 ' ':["     "]*7,
 'A':[" ### ","#   #","#   #","#####","#   #","#   #","#   #"],
@@ -64,5 +64,5 @@ for c in range(32, 96):
         cols.append("0x%02X" % v)
     out.append("  {%s},  // %r" % (", ".join(cols), chr(c)))
 out.append("};")
-open("MacMesh/oledfont.h", "w").write("\n".join(out) + "\n")
+open("Heltec-Mac/oledfont.h", "w").write("\n".join(out) + "\n")
 print("ok")

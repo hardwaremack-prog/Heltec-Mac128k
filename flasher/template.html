@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mac Mesh Flasher</title>
+<title>Heltec-Mac Flasher</title>
 <style>
 /* Layout: one narrow column of numbered steps (the order matters), log at the bottom */
 :root{--bg:#eceae4;--card:#f8f7f3;--ink:#1f1e1b;--mute:#66635c;--line:#cdc9bf;--accent:#2b5f8e;--accent-ink:#fff;--ok:#2e6b34;--bad:#a1322c;--warn:#8a5a10;
@@ -34,8 +34,8 @@ details ul{margin-top:8px}
 code{font:13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
 kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
 </style></head><body><main>
-<header><h1>Mac Mesh Flasher</h1>
-<p>Puts Mac Mesh on a Heltec WiFi LoRa 32 V3 over USB. Firmware %%FWINFO%% is built in.</p></header>
+<header><h1>Heltec-Mac Flasher</h1>
+<p>Puts Heltec-Mac on a Heltec WiFi LoRa 32 V3 over USB. Firmware %%FWINFO%% is built in.</p></header>
 
 <section class="step" id="s0"><h2><span class="n">1</span>Check this browser</h2>
 <p class="status" id="browserMsg">Checking...</p></section>
@@ -51,15 +51,15 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <p class="status" id="connMsg"></p><p class="info" id="chipInfo"></p></section>
 
 <section class="step" id="s2"><h2><span class="n">3</span>Flash</h2>
-<label><input type="radio" name="fw" id="fwBuiltin" checked> <span>Mac Mesh %%FWINFO%% (built in)</span></label>
-<label><input type="radio" name="fw" id="fwFile"> <span>Another .bin file written at 0x0 (e.g. a newer Mac Mesh or C64 Mesh): <input type="file" id="file" accept=".bin"></span></label>
-<label><input type="checkbox" id="erase"> <span>Erase the whole board first. Use this when switching from Meshtastic or if Mac Mesh acts strangely. <b>It also removes your uploaded ROM, disk and Wi-Fi settings.</b></span></label>
+<label><input type="radio" name="fw" id="fwBuiltin" checked> <span>Heltec-Mac %%FWINFO%% (built in)</span></label>
+<label><input type="radio" name="fw" id="fwFile"> <span>Another .bin file written at 0x0 (e.g. a newer Heltec-Mac or C64 Mesh): <input type="file" id="file" accept=".bin"></span></label>
+<label><input type="checkbox" id="erase"> <span>Erase the whole board first. Use this when switching from Meshtastic or if Heltec-Mac acts strangely. <b>It also removes your uploaded ROM, disk and Wi-Fi settings.</b></span></label>
 <div class="row"><button class="primary" id="flash" disabled>Flash</button><button id="disc" disabled>Disconnect</button></div>
 <progress id="prog" max="100" value="0" hidden></progress>
 <p class="status" id="flashMsg"></p></section>
 
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
-<p>The board restarts by itself (if the screen stays dark, tap <kbd>RST</kbd> once). Then join the Wi-Fi hotspot <b>MacMesh-Setup</b> (password <code>macmesh1</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+<p>The board restarts by itself (if the screen stays dark, tap <kbd>RST</kbd> once). Then join the Wi-Fi hotspot <b>Heltec-Mac-Setup</b> (password <code>heltecmac</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
 
 <section class="step" id="s5"><h2><span class="n">5</span>Watch the board start (optional)</h2>
 <p>Shows what the board prints while it starts: Wi-Fi, memory and whether the Mac started. Useful if it gets stuck. Click <b>Disconnect</b> above first if you're still connected for flashing.</p>
@@ -131,8 +131,8 @@ $('connect').onclick = async () => {
     const flashId = await loader.readFlashId().catch(() => 0);
     const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0;
     $('chipInfo').textContent = `${chip}${mac ? '  ·  MAC ' + mac : ''}${sizeMB ? '  ·  ' + sizeMB + ' MB flash' : ''}`;
-    if (!/ESP32-S3/i.test(chip)) set('connMsg', 'Connected, but this isn\'t an ESP32-S3. Mac Mesh is for the Heltec WiFi LoRa 32 V3.', 'warn');
-    else if (sizeMB && sizeMB < 8) set('connMsg', 'Connected, but the board has less than 8 MB of flash; Mac Mesh needs 8 MB.', 'warn');
+    if (!/ESP32-S3/i.test(chip)) set('connMsg', 'Connected, but this isn\'t an ESP32-S3. Heltec-Mac is for the Heltec WiFi LoRa 32 V3.', 'warn');
+    else if (sizeMB && sizeMB < 8) set('connMsg', 'Connected, but the board has less than 8 MB of flash; Heltec-Mac needs 8 MB.', 'warn');
     else { set('connMsg', 'Connected to the board.', 'ok'); $('s1').classList.add('done'); }
     $('flash').disabled = false; $('disc').disabled = false; $('connect').disabled = true;
   } catch (e) {
@@ -202,7 +202,7 @@ $('flash').onclick = async () => {
   let data;
   if ($('fwFile').checked) {
     const f = $('file').files[0];
-    if (!f) { set('flashMsg', 'Pick a .bin file first, or choose the built-in Mac Mesh firmware.', 'bad'); return; }
+    if (!f) { set('flashMsg', 'Pick a .bin file first, or choose the built-in Heltec-Mac firmware.', 'bad'); return; }
     data = await fileToBinStr(f);
     log(`Using ${f.name} (${data.length} bytes)`);
   } else data = b64ToBinStr(FW_B64);

@@ -6,5 +6,5 @@ host/flash-*.bin
 *.pbm
 host/page.png
 web/obj/
-web/macmesh.wasm
+web/heltec-mac.wasm
 flasher/node_modules/
