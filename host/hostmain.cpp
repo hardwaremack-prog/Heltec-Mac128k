@@ -285,13 +285,26 @@ int main(int argc, char** argv) {
       if (r.find("GET /macfiles.js") == 0) { body = MACFILES_JS; type = "application/javascript"; }
       else if (r.find("GET /sit-arsenic.js") == 0) { body = SIT_ARSENIC_JS; type = "application/javascript"; }
       else if (r.find("GET /api/status") == 0) {
-        char j[512];
-        snprintf(j, sizeof j, "{\"ip\":\"127.0.0.1\",\"mode\":\"sta\",\"ssid\":\"host\",\"rssi\":0,\"state\":\"%s\",\"ram\":%u,\"ramSetting\":0,"
-                 "\"speed\":100,\"turbo\":0,\"vnc\":%d,\"web\":%d,\"romOk\":%d,\"romName\":\"Mac Plus ROM v3\",\"disk\":%u,"
-                 "\"diskName\":\"%s\",\"diskInfo\":\"\",\"diskRO\":0,\"heap\":100000}",
-                 mac.crashed() ? "Stopped (error)" : "Running", mac.ramBytes(), vnc.active(), web.active(), mac.meta().romOk,
-                 mac.meta().diskSize, mac.meta().diskName);
-        body = j; type = "application/json";
+        // same fields as the board's /api/status (no Wi-Fi or heap on a PC)
+        const MacMeta& mm = mac.meta();
+        auto esc = [](std::string v) { std::string o; for (char ch : v) { if (ch == '"' || ch == '\\') o += '\\'; o += ch; } return o; };
+        auto describe = [&](uint32_t off, uint32_t size) {
+          bool boot; std::string fs, vol; inspectDisk(&diskArea, off, size, boot, fs, vol);
+          std::string d = fs; if (vol.size()) d += " \"" + vol + "\"";
+          d += boot ? (d.size() ? ", startup disk" : "startup disk") : (d.size() ? ", not a startup disk" : "not a startup disk");
+          return d; };
+        uint8_t ck[8] = {(uint8_t)(mm.romChecksum >> 24), (uint8_t)(mm.romChecksum >> 16), (uint8_t)(mm.romChecksum >> 8), (uint8_t)mm.romChecksum};
+        std::string lib; bool first = true;
+        for (int i = 0; i < LIB_MAX; i++) if (mm.lib[i].size) {
+          lib += std::string(first ? "" : ",") + "{\"i\":" + std::to_string(i) + ",\"n\":\"" + esc(mm.lib[i].name) + "\",\"s\":" + std::to_string(mm.lib[i].size) +
+                 ",\"d\":\"" + esc(describe(mm.lib[i].off, mm.lib[i].size)) + "\"}";
+          first = false; }
+        body = std::string("{\"ip\":\"localhost\",\"mode\":\"sta\",\"ssid\":\"(PC test build)\",\"rssi\":0,\"state\":\"") + (mac.crashed() ? "Stopped (error)" : "Running") +
+               "\",\"ram\":" + std::to_string(mac.ramBytes()) + ",\"ramSetting\":0,\"speed\":100,\"turbo\":0,\"vnc\":" + std::to_string(vnc.active()) +
+               ",\"web\":" + std::to_string(web.active()) + ",\"romOk\":" + std::to_string(mm.romOk) + ",\"romName\":\"" + identifyRom(ck, 8).name +
+               "\",\"disk\":" + std::to_string(mm.diskSize) + ",\"diskName\":\"" + esc(mm.diskName) + "\",\"diskInfo\":\"\",\"diskRO\":" + std::to_string(mm.diskRO) +
+               ",\"heap\":0,\"heapBlock\":0,\"active\":" + std::to_string(mm.active) + ",\"libFree\":" + std::to_string(mac.libraryFree()) + ",\"lib\":[" + lib + "]}";
+        type = "application/json";
       } else body = page;
       std::string h = "HTTP/1.1 200 OK\r\nContent-Type: " + type + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
       send(c, h.data(), h.size(), MSG_NOSIGNAL); send(c, body.data(), body.size(), MSG_NOSIGNAL);

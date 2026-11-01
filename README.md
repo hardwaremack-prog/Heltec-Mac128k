@@ -1,197 +1,242 @@
 # Heltec-Mac
 
-A Macintosh Plus running on a **Heltec WiFi LoRa 32 V3** (the Meshtastic board). Use it in a
-**web browser with sound**, or over **VNC**.
+**A 1984 Macintosh running on a Meshtastic radio board, played in your web browser, with sound.**
 
-- Motorola 68000 + Mac Plus hardware, built on the umac emulator core (Matt Evans) and the
-  Musashi 68000 core (Karl Stenerud)
-- **Browser view** on port 80: live screen, sound, mouse, keyboard, paste, full screen. Works on
-  a PC, a Raspberry Pi, or a phone.
-- **VNC** on port 5900 (no password; Raw + Hextile). No sound over VNC.
-- **Your own ROM and disk**: upload a Mac Plus v3 ROM and a startup disk image from the web page.
-  They are stored in the board's flash.
-- OLED shows the board's address, or a tiny live view of the Mac screen
+Heltec-Mac turns a **Heltec WiFi LoRa 32 V3** (the little ESP32-S3 board many people use for
+Meshtastic) into a working Macintosh 128K. The board emulates the Mac's 68000 processor and its
+hardware, keeps a library of floppy disks in its own flash, and serves the Mac's screen and
+sound to any browser on your network. There's no app to install: open the board's address on a
+PC, a Raspberry Pi or a phone, and you're at the Finder.
 
-![The web page](docs/web-page.png)
-*(A Mac Plus v3 ROM booted in the browser view with no disk yet: it waits for a startup disk.)*
+![MacPaint running in the browser on a Heltec V3](docs/heltec-mac.png)
 
-> Flashing this replaces Meshtastic. To go back, reflash Meshtastic from flasher.meshtastic.org.
+*MacPaint 1.1 running on the board, viewed in Chrome. Every Mac pixel is drawn as a crisp 2×2 block.*
 
-## How much Mac fits
+## Highlights
 
-The ESP32-S3 on the Heltec has about 512 KB of RAM in total, and Wi-Fi needs a good share of it.
-So this Mac has **128 KB** of RAM (like the original Mac 128K), or **256 KB** when there's room
-after Wi-Fi, instead of the Plus's usual 1 MB. The ROM is patched to accept that. The Mac Plus
-needs a power-of-two memory size, so sizes in between (160, 192, 208 KB) don't work.
+- **Plays in any modern browser (HTML5).** The screen streams over a WebSocket into a canvas,
+  sending only the parts of the screen that changed. Mouse, keyboard, paste, full screen and
+  an on-screen keyboard for phones all work. Pixels stay sharp at any display scaling.
+- **Real Mac sound in the browser.** The board captures the Mac's own sound hardware (22 kHz,
+  8-bit) and streams it to the page, which buffers it against Wi‑Fi hiccups. Beeps, alerts and
+  game sounds come through. It's on by default and starts at your first click.
+- **A clock that knows the time.** The Mac's clock chip is emulated and set from your
+  computer's time when you open the page. With no browser open, the board keeps time from the
+  internet in your time zone. Control Panel settings like volume and mouse speed are saved too.
+- **A disk library on the board.** About 13 floppy disks fit in the board's 5.6 MB of disk
+  storage. Switch disks with one click, download a disk with your changes, or remove one and
+  get its space back.
+- **Drop in almost any old Mac file.** Disk images (`.img`, `.dsk`, DiskCopy 4.2 `.image`) and
+  archives (`.zip`, `.7z`, `.sit` including StuffIt 5, `.hqx`, `.bin`, `.gz`), even nested
+  inside each other. Your browser unpacks them, so the board stays fast. Loose programs, like a
+  copy of Missile Command, can be copied straight onto a disk.
+- **Your choice of ROM.** Works with the original Mac 128K/512K ROM (recommended) or the
+  Mac Plus ROM. ROMs aren't included; bring your own.
+- **One-page flasher.** Flash it from Chrome or Edge with a single HTML file. No tools to install.
+- **Extras.** VNC on port 5900, a status display on the board's OLED (or a tiny live view of the
+  Mac screen), and a safe mode that keeps the page reachable if something goes wrong.
 
-128 KB runs **System 2.0 – 3.2** (Finder 4.1 – 5.3) with MacPaint, MacWrite, MacDraw and early
-games. System 6 and 7 need more memory and won't boot.
+| The clock follows your computer | Games, with sound |
+|---|---|
+| ![Control Panel showing the current date and time](docs/clock.png) | ![Missile Command](docs/missile-command.png) |
 
-The board starts Wi-Fi first, then gives the Mac what's left. **Auto** uses 256 KB if it fits,
-otherwise 128 KB. If the board crashes three starts in a row, it comes up in **safe mode**
-without the Mac, so the web page still works and you can pick a smaller size.
+![The disk library on the board's web page](docs/disk-library.png)
 
-## 1. Flash it
+*The disk library: six original 1984 disks stored on the board, one click to start from any of them.*
 
-**Easiest: the Heltec-Mac Flasher.** Download `flasher/Heltec-Mac-Flasher.html` and open it in
-Chrome or Edge on a computer. The firmware is built into the page. Plug the board in, click
-**Connect**, pick the board, then **Flash**. It verifies the write, restarts the board, and has
-fixes for the common problems (drivers, cables, download mode) right on the page.
+## What you need
 
-**Or with Espressif's web tool:** open `https://espressif.github.io/esptool-js/`, click
-**Connect**, set the address to **0x0**, pick `firmware/Heltec-Mac.bin` and click
-**Program**. Press the RST button when done.
+- A **Heltec WiFi LoRa 32 V3** (ESP32-S3, 8 MB flash) and a USB-C cable that carries data
+- **Chrome or Edge** on a computer, for flashing
+- Your own **Mac ROM** and **disk images**. Apple's software isn't included.
 
-**Or with esptool:**
-```
-esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin
-```
-If the board doesn't show up, hold **PRG**, tap **RST**, release **PRG**, then try again.
+> Flashing Heltec-Mac replaces Meshtastic on the board. To go back, reflash Meshtastic from
+> flasher.meshtastic.org.
 
-Flashing an update later keeps your uploaded ROM and disk.
+## Quick start
 
-## 2. Get it on Wi-Fi
+### 1. Flash the board
 
-On first boot the board makes a hotspot called **Heltec-Mac-Setup** (password **heltecmac**). Join it,
-browse to **http://192.168.4.1**, pick your network under *Wi-Fi*, and click **Save & restart**.
-The OLED then shows the board's address on your network (it also answers to `heltec-mac.local`).
+Download [`flasher/Heltec-Mac-Flasher.html`](flasher/Heltec-Mac-Flasher.html) and open it in
+Chrome or Edge. The firmware is built into the page. Plug in the board, click **Connect**, pick
+it from the list, and click **Flash**. The page checks the write and restarts the board. If
+anything goes wrong, the page walks you through the usual fixes (USB driver, cable, download
+mode), and **Watch the board start** shows the board's own startup log.
 
-## 3. Give it a ROM and a disk
+![The Heltec-Mac Flasher](docs/flasher.png)
 
-On the web page:
+Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin`
 
-1. **Mac ROM**: upload your own ROM. Two are supported:
-   - the original **Mac 128K/512K ROM** (64 KB, checksum `28BA61CE`). **Best for this board.**
-     It uses less of the Mac's memory than the Plus ROM, so 1984-era software like MacPaint 1.1
-     fits in 128 KB. With it the board is a real Mac 128K. It reads 400K MFS disks only.
-   - the **Mac Plus ROM version 3** (128 KB, checksum `4D1F8172`). It also reads 800K HFS disks,
-     but on a 128 KB Mac it leaves less room: MacPaint 1.1 says there isn't enough memory.
+Updating later keeps your ROM, disks and Wi‑Fi settings.
 
-   The page checks the file and says what it is if it's a different ROM. Dumps with extra bytes
-   after the ROM are fine; the extra is ignored. No Apple ROM is included.
-2. **Disks**: add your disks under **Disks**. They're kept on the board in a **disk library**
-   (about 13 400K disks fit), and **Use** starts the Mac from any of them. **Download** saves a
-   disk with your changes back to your computer.
+### 2. Put it on your Wi‑Fi
 
-   You can add raw `.img`/`.dsk` files and DiskCopy 4.2 `.image` files, or archives with disks
-   inside: **.zip, .7z, .sit** (StuffIt 1.5–5, including StuffIt 5's "Arsenic" compression),
-   **.hqx** (BinHex), **.bin** (MacBinary) and **.gz**, even one inside another. Your browser
-   unpacks the archive and uploads only the disks. If there are several, tick the ones you want
-   and they're all added in one go.
+The first time, the board makes its own hotspot: **Heltec-Mac-Setup**, password **heltecmac**.
+Join it, open **http://192.168.4.1**, pick your network under **Wi‑Fi**, and click
+**Save & restart**. The OLED then shows the board's address on your network. It also answers
+to **heltec-mac.local** on most computers.
 
-   **Programs too:** if an archive holds a loose program instead of a disk (Missile Command, for
-   example), the page offers **Add to the disk in use**. It copies the program onto that disk
-   (400K MFS disks only) and restarts the Mac; open the disk and it's there.
+### 3. Add a ROM
 
-   For this 128K Mac, the original 400K disks are the ones to use: System 1.x to 3.x and the
-   early MacPaint and MacWrite disks, which carry their own System and boot straight into the
-   app. HFS 800K disks from System 4 on need 512 KB and stop with an out-of-memory error.
-   StuffIt archives that use one of StuffIt's preset compression tables, and StuffIt X (.sitx),
-   aren't supported yet; the page says so if it meets one.
+Under **Mac ROM**, upload your ROM file. The page checks it and tells you what it is.
 
-The board restarts after uploads and the Mac boots. **Write-protect** stops the Mac from
-changing the disk in use.
+| ROM | Size | Checksum | Notes |
+|---|---|---|---|
+| **Mac 128K / 512K** | 64 KB | `28BA61CE` | **Recommended.** Makes the board a real Mac 128K, with room for MacPaint and MacWrite. Reads 400K disks. |
+| Mac Plus (version 3) | 128 KB | `4D1F8172` | Also reads 800K disks, but uses more of the Mac's small memory, so some 1984 apps won't fit. |
 
-## 4. Use it
+### 4. Add disks and start the Mac
 
-### In a browser (with sound)
+Under **Disks**, choose a disk image or an archive and click **Add**. If a file holds several
+disks, tick the ones you want and they're all added in one go. Click **Use** next to a disk to
+start the Mac from it.
 
-Open `http://<board-address>` and click the screen.
+## Using it
 
-- **Sound** is on by default. Browsers only allow audio after a click, so it starts the first
-  time you click the screen. The **Sound** button turns it off (remembered in that browser).
-- **Mouse**: click and drag on the screen. Any mouse button is the Mac's one button.
-- **Keyboard**: Ctrl or the Windows key = **Command**, Alt = **Option**. Browsers keep Ctrl+W/T/N
-  for themselves, so use the **⌘ Command** button for those (it holds Command for the next key or
-  click).
-- **Phones**: tap **Keyboard** to bring up the on-screen keyboard. Paste or use *Type into the Mac*
-  for longer text.
-- **Full screen** fills the display with the Mac screen.
+Open `http://<board address>` (or `http://heltec-mac.local`) and click the Mac screen.
 
-Only one browser view at a time. A new one takes over from the old one.
+- **Mouse:** click and drag on the screen. Any mouse button is the Mac's one button.
+- **Keyboard:** **Ctrl** or the **Windows key** is the Mac's **Command** key, and **Alt** is
+  **Option**. Browsers keep a few shortcuts for themselves (Ctrl+W, T, N), so the **⌘ Command**
+  button holds Command for your next key or click.
+- **Paste** text from your computer straight into the Mac, or use **Type into the Mac** for
+  longer text.
+- **Phones and tablets:** tap **Keyboard** for the on-screen keyboard.
+- **Sound** is on by default and starts at your first click. The **Sound** button turns it off,
+  and your choice is remembered.
+- **Pixels:** **Auto** keeps the screen razor sharp when there's room, **Fill** uses all the
+  space. **Full screen** gives you just the Mac.
+- **Restart Mac** works like the Mac's reset switch.
+
+One browser at a time can view the Mac. Opening it somewhere else takes over.
+
+### Disks and programs
+
+| You add | What happens |
+|---|---|
+| `.img`, `.dsk` (raw disk image) | Stored as is |
+| `.image` (DiskCopy 4.2) | Header removed, stored as a disk |
+| `.zip`, `.7z`, `.gz` | Unpacked in your browser; every disk inside is offered |
+| `.sit` (StuffIt 1.5 to 5, including "Arsenic" compression) | Unpacked in your browser; checksums verified |
+| `.hqx` (BinHex), `.bin` (MacBinary) | Decoded in your browser |
+| A loose program inside any of these | **Add to the disk in use** copies it onto that disk |
+
+- **Download** saves a disk, with everything you've changed, back to your computer.
+- **Remove** deletes a disk and gives its space back. The disks after it slide down in flash,
+  which can take a few seconds.
+- **Write-protect** stops the Mac from changing the disk in use.
+
+**What runs well:** the original 400K disks from 1984 to 1986. That means System 1.x to 3.x,
+MacPaint, MacWrite, the Guided Tour and early games. Each original app disk carries its own
+System, so it starts straight into the app. Disks for System 4 and later (800K HFS) need a Mac
+with 512 KB or more, which doesn't fit on this board.
+
+### Clock
+
+Each time the page opens, your browser sends your computer's local time and the Mac's clock is
+set to match. The menu bar, Alarm Clock, Control Panel and file dates all use it. With no
+browser open, the board sets the time from the internet using the time zone your browser last
+reported, so the clock is right even after a power cut.
 
 ### Over VNC
 
-Point any VNC viewer (TigerVNC, RealVNC Viewer, TightVNC, Remmina) at `<board-address>:5900`. No
-password. Keys work the same as in the browser, and pasting into the viewer types the text on the
-Mac. (macOS Screen Sharing insists on a password, so use one of the others on a Mac.)
+Any VNC viewer (TigerVNC, RealVNC Viewer, TightVNC, Remmina) can connect to
+`<board address>:5900` with no password. The keys are the same as in the browser. VNC has no
+sound; use the browser for that.
 
-| PC key | Mac key |
-|---|---|
-| Ctrl / Windows key | Command |
-| Alt / AltGr | Option |
-| Caps Lock | Caps Lock (locks) |
-| Backspace / Delete | Backspace |
-| Arrows, numeric keypad | Mac Plus arrows and keypad |
+### The board itself
 
-## Clock
+- **OLED:** the board's address and the Mac's status. Tap **PRG** to switch to a tiny live view
+  of the Mac screen.
+- **Hold PRG for 2 seconds** to restart the Mac.
+- **White LED:** on while someone is viewing.
+- **Safe mode:** if the board crashes three starts in a row, it comes up without the Mac so the
+  page still works and shows what happened.
 
-The Mac's clock follows your computer. Each time you open the page, the browser sends your
-computer's local time and the Mac's clock (menu-bar clocks, Alarm Clock, Control Panel, file
-dates) is set to it. When no browser is open, the board keeps time from the internet using the
-time zone your browser last reported, so it's right even after a restart. Control Panel settings
-such as volume, key repeat and mouse speed are saved on the board too.
+## How it works
 
-## Board buttons and lights
+The ESP32-S3 has two processor cores and 512 KB of RAM:
 
-- **PRG** tap: switch the OLED between status and a mini view of the Mac screen
-- **PRG** hold 2 s: restart the Mac
-- White LED: on while someone is viewing
-
-## Settings
-
-- **Mac RAM**: Auto, 256 or 128 KB (restarts the board)
-- **Turbo**: run as fast as the ESP32 can instead of at Mac Plus speed
-- **Restart Mac**: like pressing the reset switch
-
-## Troubleshooting
-
-- **Stuck on "JOINING WIFI..." or restarting over and over**: flash the latest firmware. Older
-  builds started the Mac before Wi-Fi and could run out of memory.
-- **Want to see what the board is doing?** Open the flasher page and use **Watch the board start**.
-  It restarts the board and shows its log: Wi-Fi, free memory, and whether the Mac started.
-- **The status page says "Not enough free memory"**: choose **128** under Mac RAM and click Apply.
+- **Core 1** runs the Mac: the Musashi 68000 emulator plus the Mac's hardware (video, sound,
+  keyboard, mouse, clock chip, floppy drive), based on the umac emulator. It runs at the speed
+  of a real 8 MHz Mac.
+- **Core 0** runs Wi‑Fi, the web page, the WebSocket stream and VNC. The screen is sent as
+  16×16 blocks, and only the blocks that changed. Sound goes out in small bundles, and silence
+  costs nothing.
+- **Memory:** the Mac gets 128 KB of RAM, just like a 1984 Mac 128K. Wi‑Fi and the web page
+  need most of the rest. The ROM stays in flash and is read directly from there.
+- **Flash (8 MB):** the firmware, your ROM, and a 5.6 MB disk library. Disk writes are cached
+  and saved to flash a second after the Mac goes quiet.
+- **Your browser** does the heavy lifting for files: unpacking ZIP, 7-Zip, StuffIt and BinHex,
+  and even writing programs onto Mac disks, before sending the finished disk to the board.
 
 ## Limitations
 
-- One disk drive: to switch disks, pick another one in the library (the Mac restarts)
-- Removing a disk slides the later disks down to give the space back, which can take a few seconds
-- No SCSI, serial, printer or AppleTalk
-- Sound is the Mac Plus's main sound buffer at its normal rate, played in the browser. VNC has no
-  sound. The emulator isn't cycle-exact, so some timing-sensitive programs may sound or run a bit
+- The Mac has 128 KB of RAM, because that's what the board can spare. System 1 to 3 software
+  runs; System 4 and later doesn't. A board with PSRAM (extra memory) would allow a bigger Mac.
+- One floppy drive. To switch disks, pick another one in the library, and the Mac restarts.
+- No serial ports, printer, AppleTalk or SCSI.
+- The emulation isn't cycle-exact, so a few timing-sensitive programs may run or sound slightly
   differently.
-- Disk writes are cached and saved to flash after about a second of quiet. Use the Mac's
-  **Shut Down** or wait a moment before unplugging.
+- Browser sound lags about 0.1 to 0.3 seconds behind the picture, to ride out Wi‑Fi hiccups.
+- Wait a moment after the Mac writes to its disk before unplugging, or use **Shut Down** on the
+  Mac.
 
-## Build from source
+## Troubleshooting
 
-Arduino IDE with the **esp32** core 3.x, board **Heltec WiFi LoRa 32(V3)**. Open
-`Heltec-Mac/Heltec-Mac.ino`. The `partitions.csv` in the sketch folder sets up a 1.9 MB app, the ROM area
-and a ~5.6 MB disk area. No extra libraries are needed. The emulator core is in `Heltec-Mac/src/core`.
+- **The board isn't in the flasher's list:** try another cable (many only charge) or another
+  USB port. Windows needs the Silicon Labs **CP210x** driver.
+- **Flashing stops at "Connecting":** hold **PRG**, tap **RST**, release **PRG**, and connect
+  again. Choose **Slow** speed in the flasher.
+- **Stuck on "JOINING WIFI..." or restarting:** flash the latest version. To see why, use
+  **Watch the board start** in the flasher.
+- **"There is not enough room in memory":** use the Mac 128K ROM instead of the Plus ROM.
+- **No sound:** click the Mac screen once (browsers need a click before playing sound) and check
+  that the **Sound** button says **on**.
 
-`host/` has a PC build of the same emulator, VNC and browser-view code for testing:
+## Building from source
+
+Arduino IDE (or arduino-cli) with the **esp32** core 3.x, board **Heltec WiFi LoRa 32(V3)**. Open
+[`Heltec-Mac/Heltec-Mac.ino`](Heltec-Mac/Heltec-Mac.ino). The `partitions.csv` in the sketch
+folder sets up the app, the ROM area and the disk library. No extra libraries are needed.
+
+| Folder | What's in it |
+|---|---|
+| `Heltec-Mac/` | The firmware: emulator glue, web page, WebSocket view, VNC, disk library |
+| `Heltec-Mac/src/core/` | The emulator core (umac + Musashi) with Heltec-Mac's changes |
+| `web/` | The browser-side unpackers (`macfiles.js`, `sit-arsenic.js`) and a WebAssembly build |
+| `flasher/` | The one-page flasher and the script that builds it from the firmware |
+| `host/` | A PC build of the same emulator and web page, plus tests |
+| `firmware/` | The ready-to-flash firmware image |
+
+The PC build runs the same code on a desktop for testing:
+
 ```
 cd host && ./build.sh
-./machost --rom plus.rom --disk system.img   # web page http://localhost:8080, VNC localhost:5900
-./machost --testrom                          # built-in 68000 test pattern, no ROM needed
-python3 tests/viewers_test.py                # (with --testrom --ram 128) checks VNC + browser view
-./tests/keys_test                            # keyboard encoding (build: see top of the file)
+./machost --rom mac128k.rom --disk system.img   # web page at http://localhost:8080, VNC on 5900
+./machost --testrom                             # built-in test pattern, no ROM needed
 ```
 
-## Licences
+After changing `web/*.js`, run `python3 tools/embed_js.py` to rebuild the copy the board serves.
+After changing the firmware, `flasher/make_flasher.py` rebuilds the flasher page.
 
-Heltec-Mac's own code is yours to use. The firmware also includes code under other licences:
-- the replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II**
-  © Christian Bauer, **GNU GPL v2**, so the firmware as a whole is distributed under GPL v2
-- **umac** © 2024 Matt Evans, MIT licence (`licenses/umac-LICENSE.txt`), with Heltec-Mac changes:
-  RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling,
-  support for the original 64 KB Mac 128K ROM (driver swap and drive-queue setup).
-- **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)
-- **SoftFloat** (used by Musashi) © John R. Hauser, see `licenses/SoftFloat-README.txt`
-- `web/sit-arsenic.js` (StuffIt "Arsenic" decompression) is a JavaScript port of code from
-  **XADMaster** (The Unarchiver) © MacPaw Way Ltd., **GNU LGPL 2.1** (`licenses/XADMaster-LGPL-2.1.txt`)
-- Archive formats: StuffIt method 13 and the StuffIt 5 layout are implemented from the format as described by The
-  Unarchiver/XADMaster (MacPaw); LZMA and 7z from the public-domain 7-Zip/LZMA SDK documentation
-- **esptool-js** (in the flasher page) © Espressif Systems, Apache License 2.0 (`licenses/esptool-js-LICENSE.txt`)
+## Credits and licences
 
-Apple ROMs and system software are **not** included. Use your own.
+Heltec-Mac stands on the shoulders of some wonderful projects:
+
+- **umac** by Matt Evans (MIT, `licenses/umac-LICENSE.txt`), the compact Mac emulator at the
+  heart of this. Heltec-Mac adds runtime memory sizing, sound output, an absolute mouse, the
+  clock chip with parameter RAM, Mac 128K ROM support, a disk library and more.
+- **Musashi** 68000 emulator by Karl Stenerud (MIT-style, `licenses/Musashi-LICENSE.txt`), with
+  **SoftFloat** by John R. Hauser (`licenses/SoftFloat-README.txt`).
+- The replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II** by
+  Christian Bauer, under the **GNU GPL v2**, so the firmware as a whole is distributed under the
+  GPL v2.
+- `web/sit-arsenic.js` is a JavaScript port of StuffIt "Arsenic" decompression from
+  **XADMaster** (The Unarchiver) by MacPaw, under the **GNU LGPL 2.1**
+  (`licenses/XADMaster-LGPL-2.1.txt`). StuffIt method 13 and the StuffIt 5 layout follow the
+  format as described there; 7-Zip/LZMA follow the public-domain LZMA SDK documentation.
+- **esptool-js** by Espressif (Apache 2.0, `licenses/esptool-js-LICENSE.txt`) powers the flasher.
+
+Heltec-Mac's own code is yours to use. Apple ROMs and system software are **not** included and
+aren't covered by any of this; use your own copies.

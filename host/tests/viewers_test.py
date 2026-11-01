@@ -88,8 +88,10 @@ def ws():
     fb = bytearray(64 * 352)
     tiles = 0; sound = 0
     t0 = time.time()
-    while (tiles < 32 * 22 or sound < 10) and time.time() - t0 < 5:
-        f = recvframe()
+    s.settimeout(2)   # silence isn't sent, so stop when nothing more arrives
+    while tiles < 32 * 22 and time.time() - t0 < 5:
+        try: f = recvframe()
+        except socket.timeout: break
         if f[0:1] == b'T':
             n = struct.unpack('>H', f[1:3])[0]; p = 3
             for _ in range(n):
@@ -105,4 +107,4 @@ def ws():
 
 print('vnc raw: bad pixels', vnc([0]))
 print('vnc hextile: bad pixels', vnc([5, 0]))
-print('websocket: screen ok, tiles, sound frames =', ws())
+print('websocket: screen ok, tiles, sound messages =', ws())

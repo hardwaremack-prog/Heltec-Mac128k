@@ -30,7 +30,7 @@ dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}dt{color:va
 #msg{min-height:1.4em}#kbd{position:absolute;left:-9999px;opacity:0}
 section.wide{grid-column:1/-1}
 .disk{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
-.disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \\2022  in use';color:var(--accent);font-weight:600}
+.disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \2022  in use';color:var(--accent);font-weight:600}
 textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
 </style></head><body>
 <header><div id="dot"></div><b>HELTEC-MAC</b><span id="hdr">connecting...</span></header>
@@ -71,7 +71,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 </section>
 <section><h2>Machine</h2>
  <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option><option>256</option><option>128</option></select></label>
- <p class="mute">The Mac Plus needs 128 KB or 256 KB. 256 KB only fits if Wi-Fi leaves enough room; otherwise it uses 128 KB.</p>
+ <p class="mute">On the Heltec V3, 128 KB is what fits next to Wi-Fi (a real Mac 128K). 256 KB is used only if there's room. With the Mac 128K ROM, 128 KB runs 1984 software like MacPaint and MacWrite.</p>
  <div class="bar" style="justify-content:flex-start"><button id="ramSet">Apply (restarts the board)</button><button id="turbo">Turbo: off</button></div>
 </section>
 <section><h2>Type into the Mac</h2>
