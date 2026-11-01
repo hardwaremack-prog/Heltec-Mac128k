@@ -3,7 +3,8 @@
 //
 // Server -> browser (binary frames):
 //   'T' n:u16  then n x { tx:u8 ty:u8  16 rows x u16 (MSB = left pixel, 1 = black) }   changed 16x16 tiles
-//   'S' vol:u8 [370 x u8]       one video frame of sound (~22.25 kHz unsigned 8-bit); vol 0xFF = silence (no samples)
+//   'S' n:u8  then n x { vol:u8 [370 x u8] }   n video frames of sound (~22.25 kHz unsigned 8-bit);
+//                               vol 0xFF = a silent frame (no samples). Runs of silence aren't sent at all.
 // Browser -> server (binary frames):
 //   'A'                         ready for the next update (one update in flight at a time)
 //   'M' x:u16 y:u16 b:u8        pointer (absolute, Mac pixels), b = button
@@ -28,6 +29,7 @@ class WebView {
   std::function<void()> onDisconnect;
   std::function<void(bool)> onAudio;                 // browser turned sound on/off
   std::function<bool(uint8_t*)> nextAudio;           // fetch one 371-byte sound frame
+  std::function<int()> audioPending;                 // how many sound frames are waiting
   uint32_t bytesSent = 0;
   bool audioOn = false;
 
@@ -50,6 +52,9 @@ class WebView {
   void handleMessage(const uint8_t* p, size_t n);
   void sendUpdate();
   void sendFrame(uint8_t opcode, const uint8_t* p, size_t n);
+  void sendBuf(uint8_t opcode, std::vector<uint8_t>& v);   // v starts with 4 spare bytes for the header
+  void sendAudio();
+  std::vector<uint8_t> aout;
 };
 
 // helpers (also used by tests)

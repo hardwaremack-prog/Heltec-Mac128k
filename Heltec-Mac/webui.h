@@ -111,7 +111,7 @@ function connect(){
      let o=(y*W+tx*16)*4;for(let b=0;b<16;b++){const c=(v&(0x8000>>b))?0:255;img.data[o]=img.data[o+1]=img.data[o+2]=c;o+=4}}
     minY=Math.min(minY,ty*16);maxY=Math.max(maxY,ty*16+16)}
    cx.putImageData(img,0,0,0,minY,W,Math.min(H,maxY)-minY);send([0x41])}
-  else if(d[0]==0x53)audio.frame(d)}}
+  else if(d[0]==0x53)audio.bundle(d)}}
 function send(a){if(wsOk&&ws.readyState==1)ws.send(new Uint8Array(a))}
 connect();
 
@@ -140,13 +140,26 @@ const audio={on:false,ctx:null,node:null,
  push(o){if(this.worklet){this.node.port.postMessage(o);return}
   const b=this.rb,L=b.length;if(this.n+o.length>L*0.5){this.r=this.w;this.n=0}   // too far behind: drop the backlog
   for(let i=0;i<o.length;i++){b[this.w]=o[i];this.w=(this.w+1)%L}this.n+=o.length},
- frame(d){if(!this.node)return;const rate=this.ctx.sampleRate,step=22200/rate;
-  const silent=d[1]==0xFF,vol=silent?0:d[1]/7*0.6,n=Math.floor((370-this.pos)/step);const o=new Float32Array(Math.max(n,0));
-  for(let k=0;k<o.length;k++){const x=this.pos+k*step,i=Math.floor(x),f=x-i;
-   if(silent)o[k]=0;else{const a=d[2+i],b=i+1<370?d[2+i+1]:a;o[k]=((a+(b-a)*f)-128)/128*vol}}
-  this.pos=this.pos+o.length*step-370;this.push(o)}};
-$('bSound').onclick=async()=>{try{if(audio.on)audio.stop();else await audio.start()}catch(e){msg('Couldn\'t start sound: '+e.message,1)}
- $('bSound').textContent='Sound: '+(audio.on?'on':'off');$('bSound').classList.toggle('on',audio.on)};
+ // A bundle: 'S' n, then n frames of {vol, 370 samples} (vol 0xFF = silent frame, no samples).
+ // After a gap (silence isn't sent), start with ~80 ms of quiet so Wi-Fi hiccups don't cut the sound.
+ bundle(d){if(!this.node)return;const rate=this.ctx.sampleRate,step=22200/rate,now=performance.now();
+  if(now-(this.last||0)>150){this.pos=0;this.push(new Float32Array(Math.round(rate*0.08)))}
+  this.last=now;let p=2;
+  for(let f=0;f<d[1];f++){const v=d[p++],silent=v==0xFF,vol=silent?0:v/7*0.6,s0=p;if(!silent)p+=370;
+   const n=Math.floor((370-this.pos)/step),o=new Float32Array(Math.max(n,0));
+   for(let k=0;k<o.length;k++){const x=this.pos+k*step,i=Math.floor(x),fr=x-i;
+    if(silent)o[k]=0;else{const a=d[s0+i],b=i+1<370?d[s0+i+1]:a;o[k]=((a+(b-a)*fr)-128)/128*vol}}
+   this.pos=this.pos+o.length*step-370;this.push(o)}}};
+// Sound is on by default (remembered per browser). Browsers only allow sound after a click or key,
+// so it starts on the first one anywhere on the page.
+let soundWanted=true;try{soundWanted=localStorage.getItem('hmSound')!=='0'}catch(e){}
+function soundBtn(){$('bSound').textContent=soundWanted?(audio.on?'Sound: on':'Sound: on (click the screen)'):'Sound: off';$('bSound').classList.toggle('on',soundWanted&&audio.on)}
+async function unlockSound(e){if(!soundWanted||audio.on||(e&&e.target&&e.target.id=='bSound'))return;
+ try{await audio.start()}catch(err){msg('Couldn\'t start sound: '+err.message,1)}soundBtn()}
+['pointerdown','pointerup','keydown','touchend'].forEach(t=>document.addEventListener(t,unlockSound,true));
+$('bSound').onclick=async()=>{soundWanted=!soundWanted;try{localStorage.setItem('hmSound',soundWanted?'1':'0')}catch(e){}
+ try{if(soundWanted)await audio.start();else audio.stop()}catch(e){msg('Couldn\'t start sound: '+e.message,1)}soundBtn()};
+soundBtn();
 
 // ---------- mouse / touch
 let btn=0,mx=0,my=0;

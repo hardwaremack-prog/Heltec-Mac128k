@@ -150,7 +150,7 @@ static void drawOled() {
 // ---------------- network transport over WiFiClient
 struct WifiConn : VncConn {
   WiFiClient c;
-  explicit WifiConn(WiFiClient cl) : c(cl) { c.setNoDelay(true); }
+  explicit WifiConn(WiFiClient cl) : c(cl) { c.setNoDelay(true); c.setTimeout(1); }
   int read(uint8_t* b, int n) override {
     int a = c.available();
     if (a <= 0) return 0;
@@ -161,7 +161,7 @@ struct WifiConn : VncConn {
     while (n > 0) {
       size_t w = c.write(b, n);
       if (w == 0) {
-        if (!c.connected() || ++idle > 3000) return false;
+        if (!c.connected() || ++idle > 400) return false;   // stuck for ~0.4 s: drop the viewer, it reconnects
         delay(1);
         continue;
       }
@@ -471,6 +471,7 @@ void setup() {
   webView.fb = fb; webView.frame = frame; webView.onKey = key; webView.onPointer = ptr; webView.onPaste = paste; webView.onDisconnect = gone;
   webView.onAudio = [](bool on) { mac.audioWanted = on; };
   webView.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
+  webView.audioPending = [] { return mac.audioQueued(); };
 
   vncListener.begin(); vncListener.setNoDelay(true);
   wsListener.begin(); wsListener.setNoDelay(true);

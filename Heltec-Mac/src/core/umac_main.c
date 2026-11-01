@@ -730,6 +730,18 @@ void    umac_mouse_abs(int x, int y, int button)
  */
 int     umac_sound_frame(uint8_t samples[370], int *volume)
 {
+#ifdef MACMESH_TRACE
+        {
+                static int n = 0; static uint8_t lra = 0xEE, lrb = 0xEE;
+                int lo = 255, hi = 0;
+                for (int i = 0; i < 370; i++) { int v = _ram_base[RAM_SIZE - 0x300 + i * 2]; if (v < lo) lo = v; if (v > hi) hi = v; }
+                if (via_ra_val != lra || via_rb_val != lrb || (hi - lo) > 0 || (++n % 300) == 0)
+                        fprintf(stderr, "snd f%d: RA=%02x (vol %d, buf%s) RB=%02x (sound %s) samples %d..%d\n", n,
+                                via_ra_val, via_ra_val & 7, (via_ra_val & 8) ? "main" : "ALT", via_rb_val,
+                                (via_rb_val & 0x80) ? "OFF" : "on", lo, hi);
+                lra = via_ra_val; lrb = via_rb_val;
+        }
+#endif
         uint32_t base = RAM_SIZE - 0x300;
         for (int i = 0; i < 370; i++)
                 samples[i] = _ram_base[base + i * 2];

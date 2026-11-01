@@ -88,13 +88,7 @@ void WebView::poll() {
     if (!handshake()) return;
   }
   while (conn && readFrame()) {}
-  if (conn && open && audioOn && nextAudio) {
-    uint8_t a[372];
-    for (int i = 0; i < 8 && conn && nextAudio(a + 1); i++) {
-      a[0] = 'S';
-      sendFrame(0x2, a, a[1] == 0xFF ? 2 : 372);
-    }
-  }
+  if (conn && open && audioOn && nextAudio) sendAudio();
   if (conn && open && ready) sendUpdate();
 }
 
@@ -183,15 +177,44 @@ void WebView::handleMessage(const uint8_t* p, size_t n) {
   }
 }
 
+// Header and payload go out in ONE write: separate tiny writes flood the board's small
+// network queue, and a full queue makes writes wait (freezing mouse and keyboard).
 void WebView::sendFrame(uint8_t opcode, const uint8_t* p, size_t n) {
+  if (!conn || n > 125) return;   // only small control frames come through here
+  uint8_t b[129];
+  b[0] = 0x80 | opcode; b[1] = n;
+  if (n) memcpy(b + 2, p, n);
+  if (!conn->write(b, 2 + n)) { drop(); return; }
+  bytesSent += 2 + n;
+}
+
+void WebView::sendBuf(uint8_t opcode, std::vector<uint8_t>& v) {
   if (!conn) return;
-  uint8_t h[4];
-  int hl;
-  h[0] = 0x80 | opcode;
-  if (n < 126) { h[1] = n; hl = 2; }
-  else { h[1] = 126; h[2] = n >> 8; h[3] = n; hl = 4; }
-  if (!conn->write(h, hl) || (n && !conn->write(p, n))) { drop(); return; }
-  bytesSent += hl + n;
+  size_t n = v.size() - 4;
+  uint8_t* start;
+  if (n < 126) { start = v.data() + 2; start[0] = 0x80 | opcode; start[1] = n; }
+  else { start = v.data(); start[0] = 0x80 | opcode; start[1] = 126; start[2] = n >> 8; start[3] = n; }
+  size_t len = v.data() + v.size() - start;
+  if (!conn->write(start, len)) { drop(); return; }
+  bytesSent += len;
+}
+
+// Sound goes out in bundles of 3+ frames (about 50 ms), and bundles that are all silence
+// aren't sent, so idle sound costs nothing on the network.
+void WebView::sendAudio() {
+  if (audioPending && audioPending() < 3) return;
+  uint8_t a[372];
+  aout.assign(4, 0);
+  aout.push_back('S'); aout.push_back(0);
+  int count = 0; bool any = false;
+  while (count < 6 && nextAudio(a)) {
+    aout.push_back(a[0]);
+    if (a[0] != 0xFF) { aout.insert(aout.end(), a + 1, a + 371); any = true; }
+    count++;
+  }
+  if (!count || !any) return;
+  aout[5] = count;
+  sendBuf(0x2, aout);
 }
 
 void WebView::sendUpdate() {
@@ -203,11 +226,11 @@ void WebView::sendUpdate() {
   // one message per batch of up to 64 tiles (34 bytes each) keeps frames under 64 KB
   out.clear();
   int count = 0, sent = 0;
-  auto start = [&]() { out.clear(); out.push_back('T'); out.push_back(0); out.push_back(0); count = 0; };
+  auto start = [&]() { out.assign(4, 0); out.push_back('T'); out.push_back(0); out.push_back(0); count = 0; };
   auto finish = [&]() {
     if (!count) return;
-    out[1] = count >> 8; out[2] = count;
-    sendFrame(0x2, out.data(), out.size());
+    out[5] = count >> 8; out[6] = count;
+    sendBuf(0x2, out);
     sent += count;
   };
   start();

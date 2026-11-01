@@ -98,7 +98,8 @@ changing the disk in use.
 
 Open `http://<board-address>` and click the screen.
 
-- **Sound**: click **Sound: on**. Browsers only allow audio after a click.
+- **Sound** is on by default. Browsers only allow audio after a click, so it starts the first
+  time you click the screen. The **Sound** button turns it off (remembered in that browser).
 - **Mouse**: click and drag on the screen. Any mouse button is the Mac's one button.
 - **Keyboard**: Ctrl or the Windows key = **Command**, Alt = **Option**. Browsers keep Ctrl+W/T/N
   for themselves, so use the **⌘ Command** button for those (it holds Command for the next key or

@@ -218,6 +218,7 @@ int main(int argc, char** argv) {
   vnc.onDisconnect = web.onDisconnect = [] { macKeys.releaseAll(); };
   web.onAudio = [](bool on) { mac.audioWanted = on; };
   web.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
+  web.audioPending = [] { return mac.audioQueued(); };
 
   auto t0 = std::chrono::steady_clock::now();
   auto now = [&] { return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count(); };
