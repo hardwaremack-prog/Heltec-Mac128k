@@ -5,3 +5,5 @@ host/tests/keys_test
 host/flash-*.bin
 *.pbm
 host/page.png
+web/obj/
+web/macmesh.wasm

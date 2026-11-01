@@ -41,7 +41,15 @@ extern "C" {
 
 #include <limits.h>
 
+#ifndef __wasm__
 #include <setjmp.h>
+#else
+/* MacMesh browser build: plain WebAssembly has no setjmp; bus/address
+ * errors are disabled in this configuration, so these never fire. */
+typedef int jmp_buf[1];
+#define setjmp(b) 0
+#define longjmp(b, v) ((void)0)
+#endif
 
 /* ======================================================================== */
 /* ==================== ARCHITECTURE-DEPENDANT DEFINES ==================== */

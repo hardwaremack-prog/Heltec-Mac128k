@@ -38,7 +38,15 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <errno.h>
+#ifndef __wasm__
 #include <setjmp.h>
+#else
+/* MacMesh browser build: no setjmp in plain WebAssembly.  exit_error() just
+ * flags the stop; the current slice finishes and umac_loop() returns 1. */
+typedef int jmp_buf[1];
+#define setjmp(b) 0
+#define longjmp(b, v) return
+#endif
 
 #include "machw.h"
 #include "m68k.h"
