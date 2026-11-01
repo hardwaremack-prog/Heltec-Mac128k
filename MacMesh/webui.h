@@ -1,5 +1,6 @@
 // The web page: live Mac screen with sound (WebSocket on port 81) + setup (ROM, disk, Wi-Fi)
 #pragma once
+#include "macfiles_js.h"   // script URLs carry a version, so a new firmware never runs with an old cached script
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mac Mesh</title>
@@ -87,8 +88,8 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 </section>
 </div>
 </main>
-<script src="/sit-arsenic.js"></script>
-<script src="/macfiles.js"></script>
+<script src=")HTML" SIT_ARSENIC_JS_URL R"HTML("></script>
+<script src=")HTML" MACFILES_JS_URL R"HTML("></script>
 <script>
 const $=id=>document.getElementById(id);
 const W=512,H=342,cv=$('scr'),cx=cv.getContext('2d'),img=cx.createImageData(W,H);

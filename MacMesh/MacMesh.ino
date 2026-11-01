@@ -227,13 +227,13 @@ static bool uploadOk = false;
 static String uploadMsg;
 
 static void setupWeb() {
-  web.on("/", HTTP_GET, [] { web.send_P(200, "text/html", INDEX_HTML); });
+  web.on("/", HTTP_GET, [] { web.sendHeader("Cache-Control", "no-cache"); web.send_P(200, "text/html", INDEX_HTML); });
   web.on("/macfiles.js", HTTP_GET, [] {
-    web.sendHeader("Cache-Control", "max-age=3600");
+    web.sendHeader("Cache-Control", "max-age=31536000, immutable");   // URL changes with the content
     web.send_P(200, "application/javascript", MACFILES_JS);
   });
   web.on("/sit-arsenic.js", HTTP_GET, [] {
-    web.sendHeader("Cache-Control", "max-age=3600");
+    web.sendHeader("Cache-Control", "max-age=31536000, immutable");
     web.send_P(200, "application/javascript", SIT_ARSENIC_JS);
   });
 

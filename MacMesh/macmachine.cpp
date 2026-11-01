@@ -156,7 +156,7 @@ bool MacMachine::begin(FlashArea* r, FlashArea* d) {
   if (m.libMagic != 0x4C494231) {   // 'LIB1': first boot with the library - keep the existing disk
     memset(&m.lib, 0, sizeof m.lib);
     m.libMagic = 0x4C494231; m.active = -1;
-    if (m.diskSize) { snprintf(m.lib[0].name, sizeof m.lib[0].name, "%s", m.diskName[0] ? m.diskName : "Disk"); m.lib[0].off = 0; m.lib[0].size = m.diskSize; m.active = 0; }
+    if (m.diskSize) { { const char* nm = m.diskName[0] ? m.diskName : "Disk"; size_t k = strnlen(nm, sizeof m.lib[0].name - 1); memcpy(m.lib[0].name, nm, k); m.lib[0].name[k] = 0; } m.lib[0].off = 0; m.lib[0].size = m.diskSize; m.active = 0; }
     saveMeta();
   }
   for (int i = 0; i < LIB_MAX; i++) {
