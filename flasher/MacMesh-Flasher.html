@@ -59,7 +59,7 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <p class="status" id="flashMsg"></p></section>
 
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
-<p>The board restarts by itself. Then join the Wi-Fi hotspot <b>MacMesh-Setup</b> (password <code>macmesh1</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+<p>The board restarts by itself (if the screen stays dark, tap <kbd>RST</kbd> once). Then join the Wi-Fi hotspot <b>MacMesh-Setup</b> (password <code>macmesh1</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
 
 <section class="step" id="s5"><h2><span class="n">5</span>Watch the board start (optional)</h2>
 <p>Shows what the board prints while it starts: Wi-Fi, memory and whether the Mac started. Useful if it gets stuck. Click <b>Disconnect</b> above first if you're still connected for flashing.</p>
@@ -153,6 +153,12 @@ $('disc').onclick = async () => {
   set('connMsg', 'Disconnected.');
 };
 
+async function restartBoard(port) {
+  await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+  await new Promise(r => setTimeout(r, 150));
+  await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+}
+
 // ---- step 5: board log at 115200
 let watchPort = null, watchReader = null;
 $('watch').onclick = async () => {
@@ -161,9 +167,7 @@ $('watch').onclick = async () => {
     watchPort = await navigator.serial.requestPort({});
     await watchPort.open({ baudRate: 115200 });
     // pulse EN through RTS to restart the board (normal boot: IO0 high)
-    await watchPort.setSignals({ dataTerminalReady: false, requestToSend: true });
-    await new Promise(r => setTimeout(r, 120));
-    await watchPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await restartBoard(watchPort);
     $('boardLog').textContent = '';
     $('watch').disabled = true; $('stopWatch').disabled = false;
     const dec = new TextDecoder();
@@ -214,7 +218,10 @@ $('flash').onclick = async () => {
       reportProgress: (i, written, total) => { $('prog').value = Math.round(written / total * 100); },
       calculateMD5Hash: s => md5(s) });
     set('flashMsg', 'Done and verified. Restarting the board...', 'ok');
-    await loader.after('hard_reset');
+    // Restart into the new firmware. (esptool-js 0.5.7's own hard reset only releases RTS and
+    // never pulls EN low, so the board stayed in download mode until RST was pressed.)
+    // IO0 must be high (DTR off) while EN is pulsed low (RTS on) and released.
+    await restartBoard(transport.device);
     try { await transport.disconnect(); } catch {}
     transport = loader = null;
     $('s2').classList.add('done');
