@@ -100,11 +100,16 @@ function msg(t,bad){$('msg').textContent=t;$('msg').className=bad?'bad':'ok'}
 async function post(u,body){const r=await fetch(u,{method:'POST',body});const t=await r.text();if(!r.ok)throw new Error(t);return t}
 
 // ---------- screen over WebSocket
+// A board that restarts or loses power never says goodbye, so the browser can keep a dead
+// connection "open" forever (frozen screen). So: after 4 s of quiet send a tiny ping ('p'); if
+// nothing comes back within 3 s, reconnect.
+let lastRx=0,pingSent=0,reconnectTimer=0;
 function connect(){
+ clearTimeout(reconnectTimer);
  ws=new WebSocket('ws://'+location.hostname+':81/');ws.binaryType='arraybuffer';
- ws.onopen=()=>{wsOk=true;$('dot').style.background='#4c4';send([0x46]);if(audio.on)send([0x61,1]);sendClock()};
- ws.onclose=()=>{wsOk=false;$('dot').style.background='#c44';setTimeout(connect,1500)};
- ws.onmessage=e=>{const d=new Uint8Array(e.data);
+ ws.onopen=()=>{wsOk=true;lastRx=Date.now();pingSent=0;$('dot').style.background='#4c4';send([0x46]);if(audio.on)send([0x61,1]);sendClock()};
+ ws.onclose=()=>{wsOk=false;$('dot').style.background='#c44';clearTimeout(reconnectTimer);reconnectTimer=setTimeout(connect,1500)};
+ ws.onmessage=e=>{const d=new Uint8Array(e.data);lastRx=Date.now();pingSent=0;if(d[0]==0x70)return;
   if(d[0]==0x54){const n=(d[1]<<8)|d[2];let p=3,minY=1e9,maxY=-1;
    for(let k=0;k<n;k++){const tx=d[p],ty=d[p+1];p+=2;
     for(let r=0;r<16;r++){const v=(d[p]<<8)|d[p+1];p+=2;const y=ty*16+r;if(y>=H)continue;
@@ -113,6 +118,11 @@ function connect(){
    cx.putImageData(img,0,0,0,minY,W,Math.min(H,maxY)-minY);send([0x41])}
   else if(d[0]==0x53)audio.bundle(d)}}
 function send(a){if(wsOk&&ws.readyState==1)ws.send(new Uint8Array(a))}
+function reconnect(){const old=ws;wsOk=false;if(old){old.onclose=null;old.onmessage=null;try{old.close()}catch(e){}}
+ $('dot').style.background='#c44';connect()}
+setInterval(()=>{if(!wsOk||document.hidden)return;const now=Date.now();
+ if(pingSent&&now-pingSent>3000){reconnect();return}
+ if(!pingSent&&now-lastRx>4000){pingSent=now;send([0x70])}},1000);
 // Set the Mac's clock to this computer's local time (Mac time counts seconds from 1 Jan 1904)
 function sendClock(){const d=new Date(),tz=-d.getTimezoneOffset(),t=Math.floor(d.getTime()/1000)+tz*60+2082844800;
  send([0x43,(t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255,(tz>>8)&255,tz&255])}
@@ -234,7 +244,9 @@ $('bReset').onclick=async()=>{if(confirm('Restart the Mac? Unsaved work on the M
 
 // ---------- status + settings
 function kb(n){return Math.round(n/1024)+' KB'}
-async function status(){try{const s=await (await fetch('/api/status')).json();lastStatus=s;
+let boardWasDown=false;
+async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
+ if(boardWasDown){boardWasDown=false;reconnect()}
  const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of a Mac Plus'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
   ['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
@@ -243,12 +255,12 @@ async function status(){try{const s=await (await fetch('/api/status')).json();la
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
  $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join Heltec-Mac-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
-}catch(e){}}
+}catch(e){boardWasDown=true}}
 // After a restart, don't reload the page (that would lose the sound you switched on with your
 // click); wait for the board to answer again. The screen reconnects by itself, and the board
 // holds the Mac until it has, so you hear the startup sound.
 async function waitForBoard(){const t0=Date.now();await new Promise(r=>setTimeout(r,2500));
- while(Date.now()-t0<60000){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok){await status();msg('Back. Starting the Mac...');setTimeout(()=>msg(''),4000);return}}catch(e){}
+ while(Date.now()-t0<60000){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok){reconnect();await status();msg('Back. Starting the Mac...');setTimeout(()=>msg(''),4000);return}}catch(e){}
   await new Promise(r=>setTimeout(r,1000))}
  msg('The board hasn\'t come back after a minute. Check the OLED for its address.',1)}
 function esc(t){return t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}

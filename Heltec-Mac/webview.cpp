@@ -160,6 +160,7 @@ void WebView::handleMessage(const uint8_t* p, size_t n) {
   if (!n) return;
   switch (p[0]) {
     case 'A': ready = true; break;
+    case 'p': { uint8_t pong = 'p'; sendFrame(0x2, &pong, 1); break; }   // keep-alive
     case 'F': ready = true; full = true; break;
     case 'M':
       if (n >= 6 && onPointer) onPointer((p[1] << 8) | p[2], (p[3] << 8) | p[4], p[5] != 0);

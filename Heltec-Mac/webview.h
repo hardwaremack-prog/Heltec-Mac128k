@@ -12,6 +12,7 @@
 //   'P' utf8...                 paste: type this text on the Mac
 //   'F'                         resend the whole screen
 //   'a' on:u8                   sound on/off
+//   'p'                         keep-alive ping; the board answers with 'p'
 //   'C' t:u32 tz:i16            the browser's local time as Mac time (seconds since 1904) and its UTC offset (minutes)
 #pragma once
 #include <stdint.h>
