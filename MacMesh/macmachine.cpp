@@ -233,9 +233,20 @@ bool MacMachine::startTest(const uint8_t* testRom, uint32_t bytes) {
 }
 #endif
 
+static void reinsertDisk(MacMachine* mm, uint32_t size, bool ro) {
+  disc_descr_t discs[DISC_NUM_DRIVES];
+  memset(discs, 0, sizeof discs);
+  discs[0].size = size;
+  discs[0].read_only = ro ? 1 : 0;
+  discs[0].op_ctx = mm;
+  discs[0].op_read = cbRead;
+  discs[0].op_write = cbWrite;
+  disc_init(discs);
+}
+
 void MacMachine::reset() {
   flushDisk();
-  if (ram) umac_reset();
+  if (ram) { reinsertDisk(this, m.diskSize, m.diskRO); umac_reset(); }
   macKeys.releaseAll();
 }
 
@@ -315,18 +326,21 @@ void MacMachine::beginRomUpload() {
   upPos = 0; upFailed = false;
 }
 
+// Keeps the first 128 KB; anything after it is counted but ignored (some ROM dumps carry extra
+// bytes on the end). finishRomUpload() checks that the first 128 KB is a real ROM.
 bool MacMachine::romUploadChunk(const uint8_t* d, size_t n) {
-  if (upFailed) return false;
-  if (upPos + n > MAC_ROM_SIZE) { upFailed = true; upPos += n; return false; }
-  romArea->write(ROM_AREA_PATCHED + upPos, d, n);
+  if (upPos < MAC_ROM_SIZE) {
+    size_t k = MAC_ROM_SIZE - upPos < n ? MAC_ROM_SIZE - upPos : n;
+    romArea->write(ROM_AREA_PATCHED + upPos, d, k);
+  }
   upPos += n;
   return true;
 }
 
 bool MacMachine::finishRomUpload(std::string& msg) {
-  if (upPos != MAC_ROM_SIZE) {
+  if (upPos < MAC_ROM_SIZE || upPos > 2 * MAC_ROM_SIZE) {
     char b[160];
-    snprintf(b, sizeof b, "That file is %u bytes; a Mac Plus ROM is exactly 131072 bytes (128 KB).", (unsigned)upPos);
+    snprintf(b, sizeof b, "That file is %u bytes; a Mac Plus ROM is 131072 bytes (128 KB).", (unsigned)upPos);
     msg = b;
     return false;
   }
@@ -363,6 +377,10 @@ bool MacMachine::finishRomUpload(std::string& msg) {
   m.romOk = 1; m.romChecksum = ck; m.patchedRam = 0;
   saveMeta();
   msg = std::string("Mac Plus v3 ROM saved (") + info.name + ").";
+  if (upPos > MAC_ROM_SIZE) {
+    snprintf(b, sizeof b, " The file had %u extra bytes after the ROM; they were ignored.", (unsigned)(upPos - MAC_ROM_SIZE));
+    msg += b;
+  }
   return true;
 }
 

@@ -22,6 +22,9 @@
 #include "../MacMesh/mackeys.h"
 #include "../MacMesh/macvnc.h"
 #include "../MacMesh/webview.h"
+extern "C" {
+#include "../MacMesh/src/core/m68k.h"
+}
 #define PROGMEM
 #include "../MacMesh/webui.h"
 
@@ -210,7 +213,13 @@ int main(int argc, char** argv) {
 
   if (frames && !mac.running()) { romArea.save(); diskArea.save(); return 0; }
   if (frames) {   // headless
+    uint32_t lastTrace = 0;
     while ((int)mac.frameCount < frames) {
+      if (getenv("TRACE") && mac.frameCount / 60 != lastTrace) {
+        lastTrace = mac.frameCount / 60;
+        printf("t=%us PC=%06X SR=%04X D0=%08X A0=%08X\n", lastTrace, m68k_get_reg(NULL, M68K_REG_PC),
+               m68k_get_reg(NULL, M68K_REG_SR), m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_A0));
+      }
       int64_t s = mac.step(now());
       if (s > 0) usleep(s);
     }

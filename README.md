@@ -13,7 +13,7 @@ A Macintosh Plus running on a **Heltec WiFi LoRa 32 V3** (the Meshtastic board).
 - OLED shows the board's address, or a tiny live view of the Mac screen
 
 ![The web page](docs/web-page.png)
-*(The screenshot shows the built-in test pattern. With your ROM and disk you get the Mac desktop.)*
+*(A Mac Plus v3 ROM booted in the browser view with no disk yet: it waits for a startup disk.)*
 
 > Flashing this replaces Meshtastic. To go back, reflash Meshtastic from flasher.meshtastic.org.
 
@@ -24,7 +24,8 @@ Mac has **128–256 KB** of RAM, not the Plus's usual 1 MB. The ROM is patched t
 That's plenty for **System 2.0 – 3.2** (Finder 4.1 – 5.3) with MacPaint, MacWrite, MacDraw and
 early games. System 6 and 7 need more memory and won't boot.
 
-**Auto** RAM picks the biggest size that leaves room for Wi-Fi. If the board ever crashes from
+**Auto** RAM picks the biggest size that leaves room for Wi-Fi. Sizes other than 128 KB start
+about 20 seconds slower, because the ROM's memory check takes longer. If the board ever crashes from
 running out of memory, Auto drops one size on the next boot by itself.
 
 ## 1. Flash it
@@ -52,8 +53,8 @@ The OLED then shows the board's address on your network (it also answers to `mac
 On the web page:
 
 1. **Mac ROM**: upload your Mac Plus ROM. It must be **version 3** (128 KB, checksum
-   `4D1F8172`). The page checks the file and says what it is if it's a different ROM. No Apple
-   ROM is included.
+   `4D1F8172`). The page checks the file and says what it is if it's a different ROM. Dumps with
+   extra bytes after the 128 KB ROM are fine; the extra is ignored. No Apple ROM is included.
 2. **Disk**: upload a startup disk image. Raw `.img`/`.dsk` files and **DiskCopy 4.2** images
    both work (DiskCopy and MacBinary headers are removed automatically). The limit is about
    5.6 MB, so 400K and 800K floppies fit easily. The page shows whether the disk is bootable.

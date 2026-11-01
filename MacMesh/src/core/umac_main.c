@@ -749,11 +749,9 @@ void    umac_reset(void)
 /* Called by the disc code when an eject op happens. */
 void    umac_disc_ejected(void)
 {
-#ifdef SIM
-        exit(1);
-#else
-        umac_reset();
-#endif
+        /* MacMesh: the disk lives in flash and can't really leave; the Mac
+         * just sees an empty drive until it's restarted (Restart Mac
+         * re-inserts it).  Upstream umac rebooted here. */
 }
 
 /* Run the emulator for about a frame.
