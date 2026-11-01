@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mac Mesh Flasher</title>
+<style>
+/* Layout: one narrow column of numbered steps (the order matters), log at the bottom */
+:root{--bg:#eceae4;--card:#f8f7f3;--ink:#1f1e1b;--mute:#66635c;--line:#cdc9bf;--accent:#2b5f8e;--accent-ink:#fff;--ok:#2e6b34;--bad:#a1322c;--warn:#8a5a10;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#18191b;--card:#222326;--ink:#ebe9e4;--mute:#a19d95;--line:#3a3b3f;--accent:#6fa3d4;--accent-ink:#0f1720;--ok:#7cc483;--bad:#ef8a80;--warn:#e0b25c;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+main{max-width:760px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+header{display:grid;gap:4px}
+h1{margin:0;font:600 26px/1.2 var(--mono);letter-spacing:.5px;text-wrap:balance}
+header p{margin:0;color:var(--mute)}
+.step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;gap:10px}
+.step h2{margin:0;font-size:16px;display:flex;gap:10px;align-items:baseline}
+.step h2 .n{font:600 13px var(--mono);color:var(--mute)}
+.step.done{border-color:var(--ok)}.step.done h2 .n{color:var(--ok)}
+.step p,.step ul{margin:0}.step ul{padding-left:20px;display:grid;gap:4px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.status{font-size:14px}.status.ok{color:var(--ok)}.status.bad{color:var(--bad)}.status.warn{color:var(--warn)}
+.info{font:13px/1.6 var(--mono);color:var(--mute);font-variant-numeric:tabular-nums}
+progress{width:100%;height:14px;accent-color:var(--accent)}
+label{display:flex;gap:8px;align-items:flex-start}
+details{border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-weight:600}
+details ul{margin-top:8px}
+#log{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);height:180px;overflow:auto;white-space:pre-wrap;margin:0;min-width:0}
+code{font:13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
+kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
+</style></head><body><main>
+<header><h1>Mac Mesh Flasher</h1>
+<p>Puts Mac Mesh on a Heltec WiFi LoRa 32 V3 over USB. Firmware %%FWINFO%% is built in.</p></header>
+
+<section class="step" id="s0"><h2><span class="n">1</span>Check this browser</h2>
+<p class="status" id="browserMsg">Checking...</p></section>
+
+<section class="step" id="s1"><h2><span class="n">2</span>Plug in and connect</h2>
+<ul>
+<li>Use a USB-C cable that carries data (many charging cables don't).</li>
+<li>Close anything else using the board: the Meshtastic web client or app, Arduino Serial Monitor, other flasher tabs.</li>
+<li>Click <b>Connect</b> and pick the board. On Windows it shows as <b>CP210x</b> or <b>Silicon Labs</b> (COM port); on a Mac, <b>usbserial</b>.</li>
+</ul>
+<div class="row"><button class="primary" id="connect">Connect</button>
+<label style="align-items:center">Speed <select id="baud"><option value="921600">Fast (921600)</option><option value="460800">Medium (460800)</option><option value="115200">Slow, most reliable (115200)</option></select></label></div>
+<p class="status" id="connMsg"></p><p class="info" id="chipInfo"></p></section>
+
+<section class="step" id="s2"><h2><span class="n">3</span>Flash</h2>
+<label><input type="radio" name="fw" id="fwBuiltin" checked> <span>Mac Mesh %%FWINFO%% (built in)</span></label>
+<label><input type="radio" name="fw" id="fwFile"> <span>Another .bin file written at 0x0 (e.g. a newer Mac Mesh or C64 Mesh): <input type="file" id="file" accept=".bin"></span></label>
+<label><input type="checkbox" id="erase"> <span>Erase the whole board first. Use this when switching from Meshtastic or if Mac Mesh acts strangely. <b>It also removes your uploaded ROM, disk and Wi-Fi settings.</b></span></label>
+<div class="row"><button class="primary" id="flash" disabled>Flash</button><button id="disc" disabled>Disconnect</button></div>
+<progress id="prog" max="100" value="0" hidden></progress>
+<p class="status" id="flashMsg"></p></section>
+
+<section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
+<p>The board restarts by itself. Then join the Wi-Fi hotspot <b>MacMesh-Setup</b> (password <code>macmesh1</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+
+<section class="step"><h2><span class="n">?</span>If it won't connect or flash</h2>
+<details open><summary>The board isn't in the list, or nothing happens</summary><ul>
+<li>Try another cable or USB port (a port on the computer itself, not a hub).</li>
+<li>Windows needs the <b>CP210x USB to UART</b> driver from Silicon Labs (silabs.com, search "CP210x VCP drivers"). After installing, unplug and replug the board.</li>
+<li>On Linux, add yourself to the <code>dialout</code> group, then log out and back in.</li>
+</ul></details>
+<details><summary>"Failed to connect" or it stops at "Connecting..."</summary><ul>
+<li>Put the board in download mode by hand: hold <kbd>PRG</kbd>, tap <kbd>RST</kbd>, let go of <kbd>PRG</kbd>. Then click <b>Connect</b> again.</li>
+<li>Pick <b>Slow (115200)</b> under Speed.</li>
+<li>Make sure no other program or browser tab has the port open.</li>
+</ul></details>
+<details><summary>It flashed, but the screen stays blank or keeps rebooting</summary><ul>
+<li>Flash again with <b>Erase the whole board first</b> ticked.</li>
+<li>Press <kbd>RST</kbd> once after flashing.</li>
+</ul></details>
+<details><summary>Going back to Meshtastic</summary><ul><li>Use the official flasher at flasher.meshtastic.org.</li></ul></details>
+</section>
+
+<section class="step"><h2><span class="n">&gt;_</span>Log</h2><pre id="log"></pre></section>
+</main>
+<script type="module">
+%%ESPTOOL%%
+</script>
+<script type="module">
+const FW_B64 = "%%FWB64%%";
+const $ = id => document.getElementById(id);
+const log = s => { $('log').textContent += s + '\n'; $('log').scrollTop = 1e9; };
+const set = (id, text, cls) => { $(id).textContent = text; $(id).className = 'status ' + (cls || ''); };
+const { ESPLoader, Transport } = window.esptool;
+
+// ---- MD5 (used to verify what was written)
+function md5(str){const k=[],r=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+ for(let i=0;i<64;i++)k[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296)>>>0;
+ const n=str.length,words=((n+8)>>>6)+1,w=new Uint32Array(words*16);
+ for(let i=0;i<n;i++)w[i>>2]|=(str.charCodeAt(i)&255)<<((i%4)*8);
+ w[n>>2]|=0x80<<((n%4)*8);w[words*16-2]=(n*8)>>>0;w[words*16-1]=Math.floor(n/536870912);
+ let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+ for(let j=0;j<words*16;j+=16){let a=a0,b=b0,c=c0,d=d0;
+  for(let i=0;i<64;i++){let f,g;
+   if(i<16){f=(b&c)|(~b&d);g=i}else if(i<32){f=(d&b)|(~d&c);g=(5*i+1)%16}else if(i<48){f=b^c^d;g=(3*i+5)%16}else{f=c^(b|~d);g=(7*i)%16}
+   const t=d;d=c;c=b;const x=(a+f+k[i]+w[j+g])>>>0;b=(b+((x<<r[i])|(x>>>(32-r[i]))))>>>0;a=t}
+  a0=(a0+a)>>>0;b0=(b0+b)>>>0;c0=(c0+c)>>>0;d0=(d0+d)>>>0}
+ return [a0,b0,c0,d0].map(v=>[0,8,16,24].map(s=>((v>>>s)&255).toString(16).padStart(2,'0')).join('')).join('')}
+
+// ---- step 1: browser check
+let ok = 'serial' in navigator;
+if (ok) set('browserMsg', 'Good: this browser can talk to USB serial devices.', 'ok'), $('s0').classList.add('done');
+else set('browserMsg', 'This browser can\'t flash boards. Open this file in Google Chrome or Microsoft Edge on a computer (not a phone).', 'bad');
+$('connect').disabled = !ok;
+
+// ---- step 2: connect
+let transport = null, loader = null;
+const term = { clean(){}, writeLine: s => log(s), write: s => { $('log').textContent += s; } };
+$('connect').onclick = async () => {
+  try {
+    set('connMsg', 'Choose the board in the browser\'s list...');
+    const port = await navigator.serial.requestPort({});
+    transport = new Transport(port, true);
+    loader = new ESPLoader({ transport, baudrate: +$('baud').value, terminal: term, romBaudrate: 115200 });
+    set('connMsg', 'Connecting... (if this hangs: hold PRG, tap RST, let go of PRG)');
+    const chip = await loader.main();
+    const mac = await loader.chip.readMac(loader).catch(() => '');
+    const flashId = await loader.readFlashId().catch(() => 0);
+    const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0;
+    $('chipInfo').textContent = `${chip}${mac ? '  ·  MAC ' + mac : ''}${sizeMB ? '  ·  ' + sizeMB + ' MB flash' : ''}`;
+    if (!/ESP32-S3/i.test(chip)) set('connMsg', 'Connected, but this isn\'t an ESP32-S3. Mac Mesh is for the Heltec WiFi LoRa 32 V3.', 'warn');
+    else if (sizeMB && sizeMB < 8) set('connMsg', 'Connected, but the board has less than 8 MB of flash; Mac Mesh needs 8 MB.', 'warn');
+    else { set('connMsg', 'Connected to the board.', 'ok'); $('s1').classList.add('done'); }
+    $('flash').disabled = false; $('disc').disabled = false; $('connect').disabled = true;
+  } catch (e) {
+    log('Connect failed: ' + (e.message || e));
+    set('connMsg', /No port selected/i.test(e.message) ? 'No board chosen. Click Connect and pick it from the list.' :
+      'Couldn\'t talk to the board. Put it in download mode (hold PRG, tap RST, let go), pick Slow speed, and try again. Details are in the log.', 'bad');
+    try { await transport?.disconnect(); } catch {}
+    transport = loader = null;
+  }
+};
+
+$('disc').onclick = async () => {
+  try { await transport?.disconnect(); } catch {}
+  transport = loader = null;
+  $('flash').disabled = true; $('disc').disabled = true; $('connect').disabled = false;
+  set('connMsg', 'Disconnected.');
+};
+
+// ---- step 3: flash
+function b64ToBinStr(b64) { return atob(b64); }
+async function fileToBinStr(f) { const a = new Uint8Array(await f.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return s; }
+$('file').onchange = () => { $('fwFile').checked = true; };
+$('flash').onclick = async () => {
+  let data;
+  if ($('fwFile').checked) {
+    const f = $('file').files[0];
+    if (!f) { set('flashMsg', 'Pick a .bin file first, or choose the built-in Mac Mesh firmware.', 'bad'); return; }
+    data = await fileToBinStr(f);
+    log(`Using ${f.name} (${data.length} bytes)`);
+  } else data = b64ToBinStr(FW_B64);
+  $('flash').disabled = true; $('disc').disabled = true;
+  $('prog').hidden = false; $('prog').value = 0;
+  try {
+    if ($('erase').checked) { set('flashMsg', 'Erasing the whole board (about 20-40 seconds)...'); await loader.eraseFlash(); log('Erased.'); }
+    set('flashMsg', 'Writing... keep the board plugged in.');
+    await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true,
+      reportProgress: (i, written, total) => { $('prog').value = Math.round(written / total * 100); },
+      calculateMD5Hash: s => md5(s) });
+    set('flashMsg', 'Done and verified. Restarting the board...', 'ok');
+    await loader.after('hard_reset');
+    try { await transport.disconnect(); } catch {}
+    transport = loader = null;
+    $('s2').classList.add('done');
+    set('flashMsg', 'Flashed and verified. The board is restarting now; go to step 4.', 'ok');
+    $('connect').disabled = false;
+  } catch (e) {
+    log('Flash failed: ' + (e.message || e));
+    set('flashMsg', 'Flashing stopped partway. Unplug and replug the board, put it in download mode (hold PRG, tap RST, let go), choose Slow speed, Connect and Flash again. Nothing is damaged by a failed flash.', 'bad');
+    $('disc').disabled = false;
+  }
+};
+</script></body></html>

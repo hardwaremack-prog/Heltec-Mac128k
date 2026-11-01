@@ -7,3 +7,4 @@ host/flash-*.bin
 host/page.png
 web/obj/
 web/macmesh.wasm
+flasher/node_modules/

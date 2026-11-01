@@ -30,9 +30,14 @@ running out of memory, Auto drops one size on the next boot by itself.
 
 ## 1. Flash it
 
-**Easiest (Chrome or Edge):** open `https://espressif.github.io/esptool-js/`, plug the board in
-with USB-C, click **Connect**, choose its port, set the address to **0x0**, pick
-`firmware/MacMesh-HeltecV3.bin` and click **Program**. Press the RST button when done.
+**Easiest: the Mac Mesh Flasher.** Download `flasher/MacMesh-Flasher.html` and open it in
+Chrome or Edge on a computer. The firmware is built into the page. Plug the board in, click
+**Connect**, pick the board, then **Flash**. It verifies the write, restarts the board, and has
+fixes for the common problems (drivers, cables, download mode) right on the page.
+
+**Or with Espressif's web tool:** open `https://espressif.github.io/esptool-js/`, click
+**Connect**, set the address to **0x0**, pick `firmware/MacMesh-HeltecV3.bin` and click
+**Program**. Press the RST button when done.
 
 **Or with esptool:**
 ```
@@ -137,5 +142,6 @@ Mac Mesh code: yours to use. It includes:
   RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling.
 - **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)
 - **SoftFloat** (used by Musashi) © John R. Hauser, see `licenses/SoftFloat-README.txt`
+- **esptool-js** (in the flasher page) © Espressif Systems, Apache License 2.0 (`licenses/esptool-js-LICENSE.txt`)
 
 Apple ROMs and system software are **not** included. Use your own.
