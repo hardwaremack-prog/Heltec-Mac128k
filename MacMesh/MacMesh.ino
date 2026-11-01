@@ -23,6 +23,7 @@
 #include "webview.h"
 #include "espflash.h"
 #include "webui.h"
+#include "macfiles_js.h"
 #include "oledfont.h"
 
 // ---------------- Heltec V3 pins
@@ -220,6 +221,10 @@ static String uploadMsg;
 
 static void setupWeb() {
   web.on("/", HTTP_GET, [] { web.send_P(200, "text/html", INDEX_HTML); });
+  web.on("/macfiles.js", HTTP_GET, [] {
+    web.sendHeader("Cache-Control", "max-age=86400");
+    web.send_P(200, "application/javascript", MACFILES_JS);
+  });
 
   web.on("/api/status", HTTP_GET, [] {
     const MacMeta& m = mac.meta();

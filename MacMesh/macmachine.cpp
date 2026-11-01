@@ -186,8 +186,9 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   // Pick the RAM size: the user's choice if it fits, else the biggest that leaves room for Wi-Fi.
   // Only 128 KB and 256 KB work: the Mac Plus ROM needs a power-of-two memory size
   // (160/192/208 KB hang on a grey screen).
-  static const uint32_t sizes[] = {256, 128};
-  if (m.ramSetting != 0 && m.ramSetting != 128 && m.ramSetting != 256) m.ramSetting = 0;
+  // (Bigger sizes only ever fit in the PC and browser builds.)
+  static const uint32_t sizes[] = {4096, 2048, 1024, 512, 256, 128};
+  if (m.ramSetting & (m.ramSetting - 1)) m.ramSetting = 0;   // not a power of two
   uint32_t pick = 0;
   auto fits = [&](uint32_t kb, size_t keep) { return kb * 1024 <= largest && freeBytes >= kb * 1024 + keep; };
   if (m.ramSetting && fits(m.ramSetting, reserve / 2)) pick = m.ramSetting;

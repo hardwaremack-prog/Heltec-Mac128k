@@ -63,9 +63,18 @@ On the web page:
 1. **Mac ROM**: upload your Mac Plus ROM. It must be **version 3** (128 KB, checksum
    `4D1F8172`). The page checks the file and says what it is if it's a different ROM. Dumps with
    extra bytes after the 128 KB ROM are fine; the extra is ignored. No Apple ROM is included.
-2. **Disk**: upload a startup disk image. Raw `.img`/`.dsk` files and **DiskCopy 4.2** images
-   both work (DiskCopy and MacBinary headers are removed automatically). The limit is about
-   5.6 MB, so 400K and 800K floppies fit easily. The page shows whether the disk is bootable.
+2. **Disk**: upload a startup disk. Raw `.img`/`.dsk` files and **DiskCopy 4.2** `.image` files
+   work, and so do archives with a disk inside: **.zip, .7z, .sit** (StuffIt 1.5–4), **.hqx**
+   (BinHex), **.bin** (MacBinary) and **.gz**, even nested (a .sit inside a .zip). Your browser
+   unpacks the archive and uploads only the disk; if there are several, it asks which one. The
+   limit is about 5.6 MB, so 400K and 800K floppies fit easily. The page shows whether the disk
+   is a startup disk.
+
+   For this 128K Mac, the original 400K disks are the ones to use: System 1.x to 3.x, and the
+   early MacPaint and MacWrite disks, which carry their own System and boot straight into the
+   app. HFS 800K disks from System 4 on need 512 KB and stop with an out-of-memory error.
+   StuffIt archives that use one of StuffIt's preset compression tables, and StuffIt 5 or
+   later, aren't supported yet; the page says so if it meets one.
 
 The board restarts after each upload and the Mac boots. **Download disk** saves the current disk
 (with your changes) back to your computer. **Write-protect** stops the Mac from changing it.
@@ -153,6 +162,8 @@ Mac Mesh code: yours to use. It includes:
   RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling.
 - **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)
 - **SoftFloat** (used by Musashi) © John R. Hauser, see `licenses/SoftFloat-README.txt`
+- Archive formats: StuffIt method 13 is implemented from the format as described by The
+  Unarchiver/XADMaster (MacPaw); LZMA and 7z from the public-domain 7-Zip/LZMA SDK documentation
 - **esptool-js** (in the flasher page) © Espressif Systems, Apache License 2.0 (`licenses/esptool-js-LICENSE.txt`)
 
 Apple ROMs and system software are **not** included. Use your own.

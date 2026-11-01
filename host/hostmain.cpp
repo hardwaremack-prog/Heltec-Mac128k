@@ -27,6 +27,7 @@ extern "C" {
 }
 #define PROGMEM
 #include "../MacMesh/webui.h"
+#include "../MacMesh/macfiles_js.h"
 
 // ---------------------------------------------------------------- flash stand-in (a file)
 struct FileArea : FlashArea {
@@ -193,7 +194,7 @@ int main(int argc, char** argv) {
     printf("Running test ROM with %u KB RAM\n", bytes / 1024);
   } else {
     // pretend we're an ESP32-S3 with ~360 KB free before Wi-Fi
-    if (!mac.start(360 * 1024, 300 * 1024, 110 * 1024, msg)) { printf("Can't start: %s\n", msg.c_str()); }
+    if (!mac.start(getenv("HEAP_KB") ? atoi(getenv("HEAP_KB")) * 1024 : 16 << 20, getenv("HEAP_KB") ? atoi(getenv("HEAP_KB")) * 1024 : 16 << 20, 56 * 1024, msg)) { printf("Can't start: %s\n", msg.c_str()); }
     else printf("Mac started with %u KB RAM\n", mac.ramBytes() / 1024);
   }
 
@@ -250,7 +251,8 @@ int main(int argc, char** argv) {
       fcntl(c, F_SETFL, 0);
       char req[2048]; int n = recv(c, req, sizeof req - 1, 0); req[n > 0 ? n : 0] = 0;
       std::string r(req), body, type = "text/html";
-      if (r.find("GET /api/status") == 0) {
+      if (r.find("GET /macfiles.js") == 0) { body = MACFILES_JS; type = "application/javascript"; }
+      else if (r.find("GET /api/status") == 0) {
         char j[512];
         snprintf(j, sizeof j, "{\"ip\":\"127.0.0.1\",\"mode\":\"sta\",\"ssid\":\"host\",\"rssi\":0,\"state\":\"%s\",\"ram\":%u,\"ramSetting\":0,"
                  "\"speed\":100,\"turbo\":0,\"vnc\":%d,\"web\":%d,\"romOk\":%d,\"romName\":\"Mac Plus ROM v3\",\"disk\":%u,"
