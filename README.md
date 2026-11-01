@@ -135,6 +135,12 @@ System, so it starts straight into the app. Disks for System 4 and later (800K H
 with 512 KB or more, which doesn't fit on this board. Many small 800K game disks are just one
 program, though, and those usually run fine once copied onto a 400K System disk.
 
+### Sleep
+
+**Sleep board** (next to Restart Mac) saves the disk, switches off the screen, Wi-Fi and LED,
+and puts the Heltec into deep sleep. Press **PRG** (or RST) on the board to wake it. The page
+waits and reconnects by itself, and the Mac starts once you're watching, so you hear the chime.
+
 ### Clock
 
 Each time the page opens, your browser sends your computer's local time and the Mac's clock is

@@ -45,6 +45,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bSize" title="Auto picks sharp when it's big enough. Sharp: every Mac pixel is exactly 2x2 or 3x3 screen pixels. Fill: uses all the space, slightly soft.">Pixels: auto</button>
   <button id="bFull">Full screen</button>
   <button id="bReset">Restart Mac</button>
+  <button id="bSleep" title="Puts the Heltec board into deep sleep. Press PRG (or RST) on the board to wake it.">Sleep board</button>
  </div>
  <div class="hint">Click the screen to type. Ctrl or Windows key = Command, Alt = Option. Browsers keep Ctrl+W/T/N for themselves, so use the &#8984; button for those.</div>
  <input id="kbd" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
@@ -240,11 +241,16 @@ $('bSize').onclick=()=>{sizeMode={auto:'sharp',sharp:'fill',fill:'auto'}[sizeMod
 window.addEventListener('resize',fitScreen);document.addEventListener('fullscreenchange',fitScreen);
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
+$('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The disk is saved first. Press PRG (or RST) on the board to wake it.'))return;
+ try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press PRG (or RST) on the board to wake it; this page reconnects by itself.');
+ await new Promise(r=>setTimeout(r,4000));
+ for(;;){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok)break}catch(e){}await new Promise(r=>setTimeout(r,2000))}
+ asleep=false;reconnect();await status();msg('Awake. Starting the Mac...');setTimeout(()=>msg(''),4000)};
 $('bReset').onclick=async()=>{if(confirm('Restart the Mac? Unsaved work on the Mac is lost.')){await post('/api/reset');msg('Mac restarted')}};
 
 // ---------- status + settings
 function kb(n){return Math.round(n/1024)+' KB'}
-let boardWasDown=false;
+let boardWasDown=false,asleep=false;
 async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
  if(boardWasDown){boardWasDown=false;reconnect()}
  const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of a Mac Plus'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
@@ -255,7 +261,7 @@ async function status(){try{const s=await (await fetch('/api/status',{cache:'no-
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
  $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join Heltec-Mac-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
-}catch(e){boardWasDown=true}}
+}catch(e){boardWasDown=true;if(asleep)$('hdr').textContent='Asleep · press PRG on the board to wake it'}}
 // After a restart, don't reload the page (that would lose the sound you switched on with your
 // click); wait for the board to answer again. The screen reconnects by itself, and the board
 // holds the Mac until it has, so you hear the startup sound.

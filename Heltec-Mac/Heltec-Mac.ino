@@ -18,6 +18,7 @@
 #include <Wire.h>
 #include <esp_heap_caps.h>
 #include <time.h>
+#include <esp_sleep.h>
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -58,7 +59,7 @@ RTC_NOINIT_ATTR static uint32_t holdForViewer;
 static volatile bool holdMac = false;
 static uint32_t holdUntil = 0, viewerSince = 0;
 static bool safeMode = false;
-static uint32_t restartAt = 0;
+static uint32_t restartAt = 0, sleepAt = 0;
 
 // ---------------- OLED (SSD1306 128x64)
 struct Oled {
@@ -210,6 +211,24 @@ static void pauseEmu() {
 }
 static void resumeEmu() { pauseReq = false; }
 
+// Deep sleep: save the disk, switch off the screen, radio and LED, and wait for the PRG button
+// (or RST). Waking up is a normal start; the Mac then waits for a browser so you hear the chime.
+static void goToSleep() {
+  pauseEmu();
+  mac.flushDisk();
+  Serial.println("Going to sleep - press PRG or RST to wake");
+  oled.clear(); oled.text(0, 2, "     SLEEPING...     "); oled.text(0, 4, " PRESS PRG TO WAKE"); oled.show();
+  delay(1500);
+  if (oled.ok) { oled.cmd(0x8D); oled.cmd(0x10); oled.cmd(0xAE); }   // charge pump off, display off
+  digitalWrite(PIN_VEXT, HIGH);                                         // cut power to the OLED
+  digitalWrite(PIN_LED, LOW);
+  WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
+  while (digitalRead(PIN_BUTTON) == LOW) delay(10);   // don't wake straight away if PRG is held
+  holdForViewer = 0xB007CAFE;
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);         // PRG button = GPIO0, active low
+  esp_deep_sleep_start();
+}
+
 // ---------------- web API
 static String jsonEsc(const String& s) {
   String o;
@@ -277,6 +296,7 @@ static void setupWeb() {
     web.send(200, "application/json", j);
   });
 
+  web.on("/api/sleep", HTTP_POST, [] { sleepAt = millis() + 400; web.send(200, "text/plain", "ok"); });
   web.on("/api/reset", HTTP_POST, [] { cmdReset = true; web.send(200, "text/plain", "ok"); });
   web.on("/api/turbo", HTTP_POST, [] { mac.setTurbo(web.arg("on") == "1"); web.send(200, "text/plain", "ok"); });
   web.on("/api/ram", HTTP_POST, [] {
@@ -422,6 +442,7 @@ static void netTask(void*) {
 
     uint32_t now = millis();
     if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; ESP.restart(); }
+    if (sleepAt && (int32_t)(now - sleepAt) >= 0) goToSleep();
     if (now - lastSpeed >= 1000) {
       uint32_t l = mac.loops;
       speedPct = (int)((l - lastLoops) * 5.0 * 100 / (now - lastSpeed) + 0.5);   // each loop = 5 ms of Mac time
@@ -521,7 +542,7 @@ void setup() {
   } else {
     Serial.printf("Mac not started: %s\n", startError.c_str());
   }
-  if (holdForViewer == 0xB007CAFE && esp_reset_reason() == ESP_RST_SW) { holdMac = true; holdUntil = millis() + 25000; }
+  if (holdForViewer == 0xB007CAFE && (esp_reset_reason() == ESP_RST_SW || esp_reset_reason() == ESP_RST_DEEPSLEEP)) { holdMac = true; holdUntil = millis() + 25000; }
   holdForViewer = 0;
   macReady = true;
 }
