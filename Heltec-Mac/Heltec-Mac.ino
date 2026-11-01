@@ -117,6 +117,44 @@ static const char* stateText() {
   return "Running";
 }
 
+// ---------------- battery (Heltec V3: divider on GPIO1, switched on by GPIO37)
+// V3.0/3.1 boards switch the divider on with GPIO37 LOW, V3.2 with HIGH; we try LOW first and
+// flip once if it reads nothing. Same scaling as Meshtastic's heltec_v3 variant.
+#define PIN_VBAT 1
+#define PIN_ADC_CTRL 37
+static int batMv = -1;           // -1 = not read yet, 0 = no battery
+static uint8_t adcOn = LOW; static bool adcTried = false;
+static int readBatteryOnce() {
+  pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, adcOn);
+  delay(5);
+  uint32_t sum = 0;
+  for (int i = 0; i < 16; i++) sum += analogReadMilliVolts(PIN_VBAT);
+  digitalWrite(PIN_ADC_CTRL, !adcOn);   // divider off again: it drains the battery
+  return (int)(sum / 16 * 4.9f * 1.045f);
+}
+static void readBattery() {
+  int mv = readBatteryOnce();
+  if (mv < 1000 && !adcTried) { adcTried = true; adcOn = !adcOn; mv = readBatteryOnce(); if (mv < 1000) adcOn = !adcOn; }
+  if (mv < 2700) mv = 0;   // nothing (or a dead cell) on the battery connector
+  batMv = batMv > 0 && mv > 0 ? (batMv * 3 + mv) / 4 : mv;   // smooth out ADC noise
+}
+static int batteryPct(int mv) {   // single-cell LiPo, resting voltage
+  static const int16_t v[] = {3300, 3500, 3600, 3650, 3700, 3750, 3800, 3900, 4000, 4100, 4200};
+  static const int8_t p[] = {0, 5, 12, 20, 30, 40, 50, 65, 80, 90, 100};
+  if (mv <= v[0]) return 0;
+  for (int i = 1; i < 11; i++) if (mv <= v[i]) return p[i - 1] + (p[i] - p[i - 1]) * (mv - v[i - 1]) / (v[i] - v[i - 1]);
+  return 100;
+}
+static String batteryText(bool shortForm) {
+  if (batMv < 0) return "";
+  if (batMv == 0) return shortForm ? "NO BAT" : "none (USB power)";
+  char b[32];
+  if (batMv > 4300) snprintf(b, sizeof b, shortForm ? "USB" : "USB power (%.2f V)", batMv / 1000.0f);
+  else if (shortForm) snprintf(b, sizeof b, "%.1fV %d%%", batMv / 1000.0f, batteryPct(batMv));
+  else snprintf(b, sizeof b, "%d%% (%.2f V)", batteryPct(batMv), batMv / 1000.0f);
+  return b;
+}
+
 static void drawOled() {
   oled.clear();
   const uint8_t* fb = mac.framebuffer();
@@ -136,7 +174,8 @@ static void drawOled() {
     }
   } else {
     char line[32];
-    oled.text(0, 0, "     HELTEC-MAC      ", true);
+    snprintf(line, sizeof line, " HELTEC-MAC%10s", batteryText(true).c_str());
+    oled.text(0, 0, line, true);
     if (apMode) {
       oled.text(0, 2, "WIFI SETUP:");
       oled.text(0, 3, AP_SSID);
@@ -292,6 +331,7 @@ static void setupWeb() {
       first = false;
     }
     j += "],";
+    j += "\"bat\":" + String(batMv) + ",\"batPct\":" + String(batMv > 0 ? batteryPct(batMv) : -1) + ",\"batText\":\"" + batteryText(false) + "\",";
     j += "\"heapBlock\":" + String((unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)) + "}";
     web.send(200, "application/json", j);
   });
@@ -443,6 +483,8 @@ static void netTask(void*) {
     uint32_t now = millis();
     if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; ESP.restart(); }
     if (sleepAt && (int32_t)(now - sleepAt) >= 0) goToSleep();
+    static uint32_t lastBat = 0;
+    if (!lastBat || now - lastBat >= 10000) { readBattery(); lastBat = now | 1; }
     if (now - lastSpeed >= 1000) {
       uint32_t l = mac.loops;
       speedPct = (int)((l - lastLoops) * 5.0 * 100 / (now - lastSpeed) + 0.5);   // each loop = 5 ms of Mac time

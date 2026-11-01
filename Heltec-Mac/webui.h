@@ -254,9 +254,9 @@ let boardWasDown=false,asleep=false;
 async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
  if(boardWasDown){boardWasDown=false;reconnect()}
  const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of a Mac Plus'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
-  ['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
+  ['Battery',s.batText||'-'],['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
- $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'');
+ $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'')+(s.bat>0&&s.bat<=4300?' · battery '+s.batPct+'%':'');
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);

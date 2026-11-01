@@ -135,6 +135,14 @@ System, so it starts straight into the app. Disks for System 4 and later (800K H
 with 512 KB or more, which doesn't fit on this board. Many small 800K game disks are just one
 program, though, and those usually run fine once copied onto a 400K System disk.
 
+### Battery
+
+With a LiPo plugged into the board's battery connector, the OLED's title bar shows its voltage
+and charge (for example `3.9V 72%`), and the web page shows it in the header and Status panel.
+`USB` means it's on USB power with the battery full or charging; `NO BAT` means nothing is
+connected. The reading is a rough guide: it comes from the board's voltage divider, like
+Meshtastic's.
+
 ### Sleep
 
 **Sleep board** (next to Restart Mac) saves the disk, switches off the screen, Wi-Fi and LED,
