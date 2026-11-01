@@ -19,7 +19,9 @@ PC, a Raspberry Pi or a phone, and you're at the Finder.
   an on-screen keyboard for phones all work. Pixels stay sharp at any display scaling.
 - **Real Mac sound in the browser.** The board captures the Mac's own sound hardware (22 kHz,
   8-bit) and streams it to the page, which buffers it against Wi‑Fi hiccups. Beeps, alerts and
-  game sounds come through. It's on by default and starts at your first click.
+  game sounds come through. It's on by default and starts at your first click. When you add a
+  ROM or switch disks, the board waits for your browser to reconnect before switching the Mac
+  on, so you hear its startup sound.
 - **A clock that knows the time.** The Mac's clock chip is emulated and set from your
   computer's time when you open the page. With no browser open, the board keeps time from the
   internet in your time zone. Control Panel settings like volume and mouse speed are saved too.

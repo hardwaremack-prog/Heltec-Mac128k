@@ -241,7 +241,10 @@ int main(int argc, char** argv) {
   if (frames && !mac.running()) { romArea.save(); diskArea.save(); return 0; }
   if (frames) {   // headless
     uint32_t lastTrace = 0;
+    bool sndCount = getenv("SNDCOUNT"); int sndFrames = 0, firstSnd = -1; uint8_t ab[MacMachine::AUDIO_BYTES];
+    if (sndCount) mac.audioWanted = true;
     while ((int)mac.frameCount < frames) {
+      if (sndCount) while (mac.popAudio(ab)) if (ab[0] != 0xFF) { sndFrames++; if (firstSnd < 0) firstSnd = mac.frameCount; }
       if (getenv("TRACE") && mac.frameCount / 60 != lastTrace) {
         lastTrace = mac.frameCount / 60;
         printf("t=%us PC=%06X SR=%04X D0=%08X A0=%08X\n", lastTrace, m68k_get_reg(NULL, M68K_REG_PC),
@@ -257,6 +260,7 @@ int main(int argc, char** argv) {
       printf("Mac clock (Time global): %s   clock chip: %u   PC local: %u\n", b, umac_rtc_get(), macNow());
     }
     printf("Ran %u frames, %u slices\n", (unsigned)mac.frameCount, (unsigned)mac.loops);
+    if (sndCount) printf("Sound: %d frames with sound, first at frame %d (%.2f s)\n", sndFrames, firstSnd, firstSnd / 60.0);
     if (!dump.empty()) dumpPBM(dump.c_str());
     mac.flushDisk();
     romArea.save(); diskArea.save();
@@ -265,6 +269,11 @@ int main(int argc, char** argv) {
 
   std::atomic<bool> quit{false};
   std::thread emu([&] {
+    if (getenv("HOLD")) {   // like the board after a page restart: wait for a browser, then 0.4 s
+      int64_t since = 0;
+      while (!quit) { if (web.active()) { if (!since) since = now(); if (now() - since > 400000) break; } else since = 0; usleep(20000); }
+      printf("Browser connected: starting the Mac\n"); fflush(stdout);
+    }
     while (!quit) {
       int64_t s = mac.step(now());
       if (s > 0) usleep(s > 2000 ? 2000 : s);

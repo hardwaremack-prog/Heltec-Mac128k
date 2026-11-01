@@ -52,6 +52,11 @@ static std::string startError;
 static volatile int speedPct = 0;
 static volatile int oledPage = 0;
 static volatile bool cmdReset = false, pauseReq = false, paused = false, macReady = false;
+// After a restart asked for from the web page, the Mac waits (up to 25 s) for that browser to
+// reconnect before it powers on, so the startup sound plays there. Survives ESP.restart().
+RTC_NOINIT_ATTR static uint32_t holdForViewer;
+static volatile bool holdMac = false;
+static uint32_t holdUntil = 0, viewerSince = 0;
 static bool safeMode = false;
 static uint32_t restartAt = 0;
 
@@ -104,6 +109,7 @@ static String ipText() { return apMode ? String("192.168.4.1") : WiFi.localIP().
 
 static const char* stateText() {
   if (safeMode) return "Safe mode";
+  if (holdMac && mac.running()) return "Waiting for your browser";
   if (!mac.running()) return mac.meta().romOk ? "Not running" : "Needs a ROM";
   if (mac.crashed()) return "Stopped (error)";
   if (paused) return "Paused";
@@ -177,6 +183,13 @@ struct WifiConn : VncConn {
 // ---------------- emulator task (core 1)
 static void emuTask(void*) {
   while (!macReady) vTaskDelay(20);
+  while (holdMac) {
+    // start once a browser has been connected for 0.4 s (time for it to switch sound on)
+    if (webView.active()) { if (!viewerSince) viewerSince = millis() | 1; }
+    else viewerSince = 0;
+    if ((viewerSince && millis() - viewerSince > 400) || (int32_t)(millis() - holdUntil) >= 0) holdMac = false;
+    else vTaskDelay(20);
+  }
   for (;;) {
     if (pauseReq) {
       mac.flushDisk();
@@ -408,7 +421,7 @@ static void netTask(void*) {
     digitalWrite(PIN_LED, (vnc.active() || webView.active()) ? HIGH : LOW);
 
     uint32_t now = millis();
-    if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); ESP.restart(); }
+    if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; ESP.restart(); }
     if (now - lastSpeed >= 1000) {
       uint32_t l = mac.loops;
       speedPct = (int)((l - lastLoops) * 5.0 * 100 / (now - lastSpeed) + 0.5);   // each loop = 5 ms of Mac time
@@ -508,6 +521,8 @@ void setup() {
   } else {
     Serial.printf("Mac not started: %s\n", startError.c_str());
   }
+  if (holdForViewer == 0xB007CAFE && esp_reset_reason() == ESP_RST_SW) { holdMac = true; holdUntil = millis() + 25000; }
+  holdForViewer = 0;
   macReady = true;
 }
 

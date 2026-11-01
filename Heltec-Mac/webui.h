@@ -244,11 +244,18 @@ async function status(){try{const s=await (await fetch('/api/status')).json();la
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
  $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join Heltec-Mac-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
 }catch(e){}}
+// After a restart, don't reload the page (that would lose the sound you switched on with your
+// click); wait for the board to answer again. The screen reconnects by itself, and the board
+// holds the Mac until it has, so you hear the startup sound.
+async function waitForBoard(){const t0=Date.now();await new Promise(r=>setTimeout(r,2500));
+ while(Date.now()-t0<60000){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok){await status();msg('Back. Starting the Mac...');setTimeout(()=>msg(''),4000);return}}catch(e){}
+  await new Promise(r=>setTimeout(r,1000))}
+ msg('The board hasn\'t come back after a minute. Check the OLED for its address.',1)}
 function esc(t){return t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 status();setInterval(status,2500);
 async function upload(url,file,label,extra){if(!file){msg('Pick a file first',1);return}
  msg('Uploading '+label+'... (the Mac pauses meanwhile)');const fd=new FormData();fd.append('f',file,file.name);
- try{const t=await post(url,fd);msg(t+(extra||'')+' Restarting...');setTimeout(()=>location.reload(),extra?12000:6000)}catch(e){msg(e.message,1)}}
+ try{const t=await post(url,fd);msg(t+(extra||'')+' Restarting...');waitForBoard()}catch(e){msg(e.message,1)}}
 $('romUp').onclick=()=>upload('/api/rom',$('romFile').files[0],'ROM');
 // ---- disk library. Archives are unpacked in the browser (macfiles.js); the board only stores raw disks.
 let found=[],progs=[];
@@ -258,7 +265,7 @@ function renderLib(s){const L=s.lib||[];
   '<p class="mute">No disks yet. Add one below.</p>';
  $('libFree').textContent=kb(s.libFree||0)+' free for more disks'+(s.active<0&&L.length?' · no disk in use, so the Mac shows the question-mark disk':'')}
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
- if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');setTimeout(()=>location.reload(),6000)}
+ if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');waitForBoard()}
  if(d!==undefined){const row=e.target.closest('.disk');if(e.target.textContent!='Sure?'){e.target.textContent='Sure?';setTimeout(()=>{e.target.textContent='Remove'},3000);return}
   msg('Removing... the board moves your other disks down to free the space, so this can take a few seconds.');
   try{await post('/api/libdel?i='+d);msg('Removed. The space is free again.')}catch(err){msg(err.message,1)}status()}};
@@ -274,7 +281,7 @@ async function sendDisks(list,useFirst){   // uploads one after another; the boa
   const fd=new FormData();fd.append('f',new File([d.raw],name),name);
   try{await post('/api/disk?activate='+(useFirst&&k==0?1:0)+'&restart='+(last?1:0),fd)}catch(e){msg(e.message,1);return}
   if(useFirst&&k==0)note=diskWarning(d)}
- msg('Added '+list.length+' disk'+(list.length>1?'s':'')+'.'+note+' Restarting...');setTimeout(()=>location.reload(),note?12000:6000)}
+ msg('Added '+list.length+' disk'+(list.length>1?'s':'')+'.'+note+' Restarting...');waitForBoard()}
 $('diskUp').onclick=async()=>{const f=$('diskFile').files[0];if(!f){msg('Pick a file first',1);return}
  $('diskPick').hidden=true;$('progPick').hidden=true;msg('Opening '+f.name+'...');
  try{const r=await MacFiles.open(f.name,new Uint8Array(await f.arrayBuffer()));found=r.disks;progs=r.files||[];
@@ -299,10 +306,10 @@ $('progAdd').onclick=async()=>{const i=lastStatus.active;if(i<0)return;
   msg('Writing '+added.join(', ')+' to the disk...');
   const fd=new FormData();fd.append('f',new File([disk],name),name);
   await post('/api/disk?replace='+i,fd);$('progPick').hidden=true;
-  msg('Added '+added.join(', ')+'. The Mac is restarting; open the disk to find '+(added.length>1?'them':'it')+'.');setTimeout(()=>location.reload(),7000)}
+  msg('Added '+added.join(', ')+'. The Mac is restarting; open the disk to find '+(added.length>1?'them':'it')+'.');waitForBoard()}
  catch(e){msg(e.message,1)}};
 $('diskRO').onclick=async()=>{await post('/api/diskro?on='+(lastStatus.diskRO?0:1));msg('Write-protect changed - restarting the Mac');status()};
-$('ramSet').onclick=async()=>{await post('/api/ram?kb='+$('ram').value);msg('Restarting the board...');setTimeout(()=>location.reload(),7000)};
+$('ramSet').onclick=async()=>{await post('/api/ram?kb='+$('ram').value);msg('Restarting the board...');waitForBoard()};
 $('turbo').onclick=async()=>{await post('/api/turbo?on='+(lastStatus.turbo?0:1));status()};
 $('scan').onclick=async()=>{$('scan').textContent='Scanning...';const l=await (await fetch('/api/scan')).json();
  $('ssidSel').innerHTML='<option value="">(choose)</option>'+l.map(n=>'<option>'+esc(n.s)+'</option>').join('');$('scan').textContent='Scan'};
