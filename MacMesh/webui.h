@@ -27,6 +27,9 @@ input[type=text],input[type=password],select{font:inherit;padding:6px 8px;border
 input[type=file]{max-width:100%}label{display:block;margin:6px 0}
 dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}dt{color:var(--mute)}dd{margin:0;word-break:break-word}
 #msg{min-height:1.4em}#kbd{position:absolute;left:-9999px;opacity:0}
+section.wide{grid-column:1/-1}
+.disk{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \\2022  in use';color:var(--accent);font-weight:600}
 textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
 </style></head><body>
 <header><div id="dot"></div><b>MAC MESH</b><span id="hdr">connecting...</span></header>
@@ -52,15 +55,18 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
  <p id="romState"></p>
  <input type="file" id="romFile"> <button id="romUp" class="primary">Upload ROM</button>
 </section>
-<section><h2>Disk</h2>
- <p class="mute">A startup disk: .img/.dsk/.image (raw or DiskCopy 4.2), or an archive with one inside: .zip, .7z, .sit (StuffIt 1.5&ndash;4), .hqx, .bin, .gz. Archives are unpacked here in your browser. Early 400K disks (System 1&ndash;3) fit this Mac best.</p>
- <p id="diskState"></p>
- <input type="file" id="diskFile"> <button id="diskUp" class="primary">Upload disk</button>
- <div id="diskPick" hidden><p><b>This file has more than one disk in it. Pick the one to use:</b></p><div id="diskList"></div>
-  <button id="diskPickUp" class="primary">Upload this disk</button></div>
- <div class="bar" style="justify-content:flex-start;margin-top:8px">
-  <a class="btn" id="diskDl" href="/api/disk.img">Download disk</a>
-  <button id="diskRO">Write-protect</button><button id="diskEj">Eject</button></div>
+<section class="wide"><h2>Disks</h2>
+ <p class="mute">Your disks are kept on the board. Click <b>Use</b> to start the Mac from one. Add disk images (.img, .dsk, DiskCopy .image) or archives with disks or programs inside (.zip, .7z, .sit incl. StuffIt 5, .hqx, .bin, .gz); archives are unpacked here in your browser. Early 400K disks (System 1&ndash;3) fit this Mac best.</p>
+ <div id="lib"></div>
+ <p id="libFree" class="mute"></p>
+ <div class="bar" style="justify-content:flex-start"><input type="file" id="diskFile"> <button id="diskUp" class="primary">Add</button>
+  <button id="diskRO" title="Stop the Mac from changing the disk in use">Write-protect</button></div>
+ <div id="diskPick" hidden><p><b>Disks found. Tick the ones to add:</b></p><div id="diskList"></div>
+  <label><input type="checkbox" id="useFirst" checked> <span>Start the Mac from the first ticked disk</span></label>
+  <button id="diskPickUp" class="primary">Add ticked disks</button></div>
+ <div id="progPick" hidden><p><b>Programs found:</b> <span id="progList"></span></p>
+  <p class="mute" id="progNote"></p>
+  <button id="progAdd" class="primary">Add to the disk in use</button></div>
 </section>
 <section><h2>Machine</h2>
  <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option><option>256</option><option>128</option></select></label>
@@ -81,6 +87,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 </section>
 </div>
 </main>
+<script src="/sit-arsenic.js"></script>
 <script src="/macfiles.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -192,7 +199,7 @@ async function status(){try{const s=await (await fetch('/api/status')).json();la
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
  $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'');
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
- $('diskState').innerHTML=s.disk?('<b>'+esc(s.diskName||'disk')+'</b> &middot; '+kb(s.disk)+(s.diskInfo?' &middot; '+esc(s.diskInfo):'')+(s.diskRO?' &middot; write-protected':'')):'<span class="mute">No disk - the Mac will show a disk with a question mark.</span>';
+ renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
  $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join MacMesh-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
 }catch(e){}}
@@ -202,28 +209,57 @@ async function upload(url,file,label,extra){if(!file){msg('Pick a file first',1)
  msg('Uploading '+label+'... (the Mac pauses meanwhile)');const fd=new FormData();fd.append('f',file,file.name);
  try{const t=await post(url,fd);msg(t+(extra||'')+' Restarting...');setTimeout(()=>location.reload(),extra?12000:6000)}catch(e){msg(e.message,1)}}
 $('romUp').onclick=()=>upload('/api/rom',$('romFile').files[0],'ROM');
-// disks: archives are unpacked in the browser (macfiles.js), then the raw disk is uploaded
-let found=[];
+// ---- disk library. Archives are unpacked in the browser (macfiles.js); the board only stores raw disks.
+let found=[],progs=[];
+function renderLib(s){const L=s.lib||[];
+ $('lib').innerHTML=L.length?L.map(d=>'<div class="disk'+(d.i==s.active?' cur':'')+'"><div class="nm"><b>'+esc(d.n.replace(/\.img$/i,''))+'</b><br><span class="mute">'+kb(d.s)+(d.d?' &middot; '+esc(d.d):'')+'</span></div>'+
+  (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'">Remove</button></div>').join(''):
+  '<p class="mute">No disks yet. Add one below.</p>';
+ $('libFree').textContent=kb(s.libFree||0)+' free for more disks'+(s.active<0&&L.length?' · no disk in use, so the Mac shows the question-mark disk':'')}
+$('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
+ if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');setTimeout(()=>location.reload(),6000)}
+ if(d!==undefined){const row=e.target.closest('.disk');if(e.target.textContent!='Sure?'){e.target.textContent='Sure?';setTimeout(()=>{e.target.textContent='Remove'},3000);return}
+  await post('/api/libdel?i='+d);msg('Removed.');status()}};
 function diskLabel(d){const i=d.info;return esc(d.name.split('/').pop())+' &middot; '+Math.round(i.size/1024)+' KB'+(i.fs?' '+i.fs:'')+(i.vol?' &ldquo;'+esc(i.vol)+'&rdquo;':'')+(i.bootable?'':' &middot; not a startup disk')}
 function diskWarning(d){const i=d.info;
  if(i.fs=='HFS'&&lastStatus.ram&&lastStatus.ram<512*1024)return ' Note: HFS disks are usually System 4 or later, which needs 512 KB; this Mac has '+kb(lastStatus.ram)+', so it may stop with an out-of-memory error.';
  if(!i.bootable)return ' Note: it isn\'t a startup disk, so the Mac will show the question-mark disk.';return ''}
-async function sendDisk(d){const name=d.name.split('/').pop().replace(/\.(image|dsk|img|dc42|hfv|disk)$/i,'')+'.img';
- await upload('/api/disk',new File([d.raw],name),diskLabel(d).replace(/<[^>]+>|&[a-z]+;/g,' '),diskWarning(d))}
+async function sendDisks(list,useFirst){   // uploads one after another; the board restarts after the last
+ let note='';
+ for(let k=0;k<list.length;k++){const d=list[k],last=k==list.length-1;
+  const name=d.name.split('/').pop().replace(/\.(image|dsk|img|dc42|hfv|disk)$/i,'')+'.img';
+  msg('Adding '+name+' ('+(k+1)+' of '+list.length+')...');
+  const fd=new FormData();fd.append('f',new File([d.raw],name),name);
+  try{await post('/api/disk?activate='+(useFirst&&k==0?1:0)+'&restart='+(last?1:0),fd)}catch(e){msg(e.message,1);return}
+  if(useFirst&&k==0)note=diskWarning(d)}
+ msg('Added '+list.length+' disk'+(list.length>1?'s':'')+'.'+note+' Restarting...');setTimeout(()=>location.reload(),note?12000:6000)}
 $('diskUp').onclick=async()=>{const f=$('diskFile').files[0];if(!f){msg('Pick a file first',1);return}
- $('diskPick').hidden=true;msg('Opening '+f.name+'...');
- try{const r=await MacFiles.open(f.name,new Uint8Array(await f.arrayBuffer()));found=r.disks;
-  if(!found.length){let t='No Mac disk image found in '+f.name+'.';
+ $('diskPick').hidden=true;$('progPick').hidden=true;msg('Opening '+f.name+'...');
+ try{const r=await MacFiles.open(f.name,new Uint8Array(await f.arrayBuffer()));found=r.disks;progs=r.files||[];
+  if(!found.length&&!progs.length){let t='No Mac disk or program found in '+f.name+'.';
    if(r.other.length==1&&r.other[0]==f.name)t=f.name+' isn\'t a Mac disk image or an archive Mac Mesh can open.';
-   else if(r.other.length)t+=' It contains: '+r.other.slice(0,4).map(s=>s.split('/').pop()).join(', ')+(r.other.length>4?'...':'')+'. Loose applications have to be on a disk to use them.';
    if(r.notes.length)t+=' '+r.notes.join(' ');msg(t,1);return}
-  if(found.length==1){await sendDisk(found[0]);return}
-  $('diskList').innerHTML=found.map((d,i)=>'<label><input type="radio" name="dpick" value="'+i+'"'+(i?'':' checked')+'> <span>'+diskLabel(d)+'</span></label>').join('');
-  $('diskPick').hidden=false;msg('Found '+found.length+' disks. Pick one.')}
+  if(found.length==1&&!progs.length){await sendDisks(found,true);return}
+  if(found.length){$('diskList').innerHTML=found.map((d,i)=>'<label><input type="checkbox" name="dpick" value="'+i+'" checked> <span>'+diskLabel(d)+'</span></label>').join('');$('diskPick').hidden=false}
+  if(progs.length){const cur=(lastStatus.lib||[]).find(d=>d.i==lastStatus.active);
+   $('progList').textContent=progs.map(p=>p.name).join(', ');
+   $('progNote').textContent=cur?'They\'ll be copied onto "'+cur.n.replace(/\.img$/i,'')+'", the disk in use. It must be a 400K MFS disk with room to spare.':'Pick a disk to use first, then add these to it.';
+   $('progAdd').disabled=!cur;$('progPick').hidden=false}
+  msg('Found '+[found.length?found.length+' disk'+(found.length>1?'s':''):'',progs.length?progs.length+' program'+(progs.length>1?'s':''):''].filter(Boolean).join(' and ')+'.'+(r.notes.length?' '+r.notes.join(' '):''))}
  catch(e){msg('Couldn\'t open '+f.name+': '+e.message,1)}};
-$('diskPickUp').onclick=()=>{const i=+document.querySelector('input[name=dpick]:checked').value;$('diskPick').hidden=true;sendDisk(found[i])};
+$('diskPickUp').onclick=()=>{const pick=[...document.querySelectorAll('input[name=dpick]:checked')].map(c=>found[+c.value]);
+ if(!pick.length){msg('Tick at least one disk',1);return}$('diskPick').hidden=true;sendDisks(pick,$('useFirst').checked)};
+$('progAdd').onclick=async()=>{const i=lastStatus.active;if(i<0)return;
+ try{msg('Copying the disk from the board...');
+  let disk=new Uint8Array(await (await fetch('/api/disk.img?i='+i)).arrayBuffer());const added=[];
+  for(const p of progs){const r=MacFiles.addToMFS(disk,p);disk=r.disk;added.push(r.name)}
+  const cur=(lastStatus.lib||[]).find(d=>d.i==i),name=cur?cur.n:'disk.img';
+  msg('Writing '+added.join(', ')+' to the disk...');
+  const fd=new FormData();fd.append('f',new File([disk],name),name);
+  await post('/api/disk?replace='+i,fd);$('progPick').hidden=true;
+  msg('Added '+added.join(', ')+'. The Mac is restarting; open the disk to find '+(added.length>1?'them':'it')+'.');setTimeout(()=>location.reload(),7000)}
+ catch(e){msg(e.message,1)}};
 $('diskRO').onclick=async()=>{await post('/api/diskro?on='+(lastStatus.diskRO?0:1));msg('Write-protect changed - restarting the Mac');status()};
-$('diskEj').onclick=async()=>{if(confirm('Remove the disk image from the board? Download it first if you want to keep changes.')){await post('/api/eject');msg('Disk removed. Restarting...');setTimeout(()=>location.reload(),6000)}};
 $('ramSet').onclick=async()=>{await post('/api/ram?kb='+$('ram').value);msg('Restarting the board...');setTimeout(()=>location.reload(),7000)};
 $('turbo').onclick=async()=>{await post('/api/turbo?on='+(lastStatus.turbo?0:1));status()};
 $('scan').onclick=async()=>{$('scan').textContent='Scanning...';const l=await (await fetch('/api/scan')).json();

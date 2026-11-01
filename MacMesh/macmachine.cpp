@@ -71,13 +71,13 @@ const char* diskFormatName(DiskFormat f) {
   }
 }
 
-void inspectDisk(FlashArea* disk, uint32_t size, bool& bootable, std::string& fs, std::string& volName) {
+void inspectDisk(FlashArea* disk, uint32_t base, uint32_t size, bool& bootable, std::string& fs, std::string& volName) {
   bootable = false; fs.clear(); volName.clear();
   if (!disk || size < 2048) return;
   uint8_t h[2]; uint8_t mdb[64];
-  disk->read(0, h, 2);
+  disk->read(base, h, 2);
   bootable = h[0] == 'L' && h[1] == 'K';
-  disk->read(1024, mdb, sizeof mdb);
+  disk->read(base + 1024, mdb, sizeof mdb);
   uint16_t sig = be16(mdb);
   if (sig == 0xD2D7) {          // MFS: name at 0x24
     fs = "MFS";
@@ -102,15 +102,15 @@ static int cbWrite(void* ctx, uint8_t* data, unsigned int off, unsigned int len)
 bool MacMachine::loadSector(int32_t idx) {
   if (idx == secIdx) return true;
   flushDisk();
-  if (!diskArea->read(idx * SECTOR, secBuf, SECTOR)) { secIdx = -1; return false; }
+  if (!diskArea->read(diskBase + idx * SECTOR, secBuf, SECTOR)) { secIdx = -1; return false; }
   secIdx = idx;
   return true;
 }
 
 void MacMachine::flushDisk() {
   if (!secDirty || secIdx < 0) return;
-  diskArea->erase(secIdx * SECTOR, SECTOR);
-  diskArea->write(secIdx * SECTOR, secBuf, SECTOR);
+  diskArea->erase(diskBase + secIdx * SECTOR, SECTOR);
+  diskArea->write(diskBase + secIdx * SECTOR, secBuf, SECTOR);
   secDirty = false;
 }
 
@@ -121,7 +121,7 @@ int MacMachine::diskRead(uint8_t* data, uint32_t off, uint32_t len) {
     uint32_t in = off % SECTOR, n = SECTOR - in;
     if (n > len) n = len;
     if (idx == secIdx) memcpy(data, secBuf + in, n);
-    else if (!diskArea->read(off, data, n)) return -1;
+    else if (!diskArea->read(diskBase + off, data, n)) return -1;
     data += n; off += n; len -= n;
   }
   return 0;
@@ -153,6 +153,19 @@ bool MacMachine::begin(FlashArea* r, FlashArea* d) {
   }
   if (m.diskSize > diskArea->size()) m.diskSize = 0;
   m.diskName[sizeof m.diskName - 1] = 0;
+  if (m.libMagic != 0x4C494231) {   // 'LIB1': first boot with the library - keep the existing disk
+    memset(&m.lib, 0, sizeof m.lib);
+    m.libMagic = 0x4C494231; m.active = -1;
+    if (m.diskSize) { snprintf(m.lib[0].name, sizeof m.lib[0].name, "%s", m.diskName[0] ? m.diskName : "Disk"); m.lib[0].off = 0; m.lib[0].size = m.diskSize; m.active = 0; }
+    saveMeta();
+  }
+  for (int i = 0; i < LIB_MAX; i++) {
+    m.lib[i].name[sizeof m.lib[i].name - 1] = 0;
+    if (m.lib[i].size && (uint64_t)m.lib[i].off + m.lib[i].size > diskArea->size()) m.lib[i].size = 0;
+  }
+  if (m.active >= LIB_MAX || (m.active >= 0 && !m.lib[m.active].size)) m.active = -1;
+  if (m.active >= 0) { diskBase = m.lib[m.active].off; m.diskSize = m.lib[m.active].size; snprintf(m.diskName, sizeof m.diskName, "%s", m.lib[m.active].name); }
+  else { diskBase = 0; m.diskSize = 0; m.diskName[0] = 0; }
   return true;
 }
 
@@ -395,12 +408,21 @@ bool MacMachine::finishRomUpload(std::string& msg) {
   return true;
 }
 
-void MacMachine::beginDiskUpload(const std::string& name) {
+void MacMachine::beginDiskUpload(const std::string& name, int replaceIndex, bool activate) {
   stop();
   secIdx = -1; secDirty = false;
-  m.diskSize = 0;
-  snprintf(m.diskName, sizeof m.diskName, "%s", name.c_str());
-  saveMeta();
+  upReplace = (replaceIndex >= 0 && replaceIndex < LIB_MAX && m.lib[replaceIndex].size) ? replaceIndex : -1;
+  upActivate = activate;
+  if (upReplace >= 0) {   // overwrite in place: room up to the next disk
+    upBase = m.lib[upReplace].off;
+    uint32_t s, l; freeGap(s, l, upReplace);
+    uint32_t end = diskArea->size();
+    for (int i = 0; i < LIB_MAX; i++) if (i != upReplace && m.lib[i].size && m.lib[i].off > upBase && m.lib[i].off < end) end = m.lib[i].off;
+    upLimit = end - upBase;
+    m.lib[upReplace].size = 0;   // gone until the new one is complete
+    if (m.active == upReplace) { m.active = -1; m.diskSize = 0; }
+    saveMeta();
+  } else { freeGap(upBase, upLimit); }
   upPos = upErased = upStart = upLen = upSkipped = upHeadN = 0;
   upHeaderDone = upFailed = false;
   upFormat = DISK_UNKNOWN;
@@ -413,13 +435,13 @@ bool MacMachine::diskWriteUpload(const uint8_t* d, size_t n) {
   while (n && upSkipped < upStart) { d++; n--; upSkipped++; }
   if (upLen && upPos + n > upLen) n = upLen - upPos;
   if (!n) return true;
-  if (upPos + n > diskArea->size()) {
-    char b[120];
-    snprintf(b, sizeof b, "Disk image is too big: the board holds up to %u KB.", (unsigned)(diskArea->size() / 1024));
+  if (upPos + n > upLimit) {
+    char b[160];
+    snprintf(b, sizeof b, "Not enough room on the board for this disk (%u KB free). Remove a disk from the library first.", (unsigned)(upLimit / 1024));
     uploadMsg = b; upFailed = true; return false;
   }
-  while (upErased < upPos + n) { diskArea->erase(upErased, SECTOR); upErased += SECTOR; }
-  diskArea->write(upPos, d, n);
+  while (upErased < upPos + n) { diskArea->erase(upBase + upErased, SECTOR); upErased += SECTOR; }
+  diskArea->write(upBase + upPos, d, n);
   upPos += n;
   return true;
 }
@@ -446,10 +468,16 @@ bool MacMachine::finishDiskUpload(std::string& msg) {
   if (upPos < 2048) { msg = "That file is too small to be a Mac disk image."; return false; }
   if (upLen && upPos < upLen) { msg = "The DiskCopy image is cut short."; return false; }
   uint32_t size = upPos & ~511u;
-  m.diskSize = size;
+  int slot = upReplace;
+  if (slot < 0) for (int i = 0; i < LIB_MAX; i++) if (!m.lib[i].size) { slot = i; break; }
+  if (slot < 0) { msg = "The disk library is full (16 disks). Remove one first."; return false; }
+  snprintf(m.lib[slot].name, sizeof m.lib[slot].name, "%s", upName.c_str());
+  m.lib[slot].off = upBase; m.lib[slot].size = size;
+  lastUploadIndex = slot;
   saveMeta();
+  if (upActivate || upReplace >= 0) useDisk(slot);
   bool boot; std::string fs, vol;
-  inspectDisk(diskArea, size, boot, fs, vol);
+  inspectDisk(diskArea, upBase, size, boot, fs, vol);
   char b[220];
   snprintf(b, sizeof b, "Saved %u KB %s%s%s%s%s.", (unsigned)(size / 1024), diskFormatName(upFormat),
            fs.size() ? (", " + fs).c_str() : "", vol.size() ? (" \"" + vol + "\"").c_str() : "",
@@ -461,7 +489,43 @@ bool MacMachine::finishDiskUpload(std::string& msg) {
 
 void MacMachine::ejectDisk() {
   stop();
-  m.diskSize = 0;
-  m.diskName[0] = 0;
+  if (m.active >= 0) removeDisk(m.active);
+}
+
+// ------------------------------------------------------------------ disk library
+static uint32_t round4k(uint32_t v) { return (v + 4095) & ~4095u; }
+
+// Biggest free stretch of the disk area (ignoring one entry, when it's being replaced)
+void MacMachine::freeGap(uint32_t& start, uint32_t& len, int ignore) const {
+  start = 0; len = 0;
+  uint32_t pos = 0, total = diskArea->size();
+  for (;;) {
+    // next used region at or after pos
+    uint32_t nextOff = total; int nextI = -1;
+    for (int i = 0; i < LIB_MAX; i++)
+      if (i != ignore && m.lib[i].size && m.lib[i].off >= pos && m.lib[i].off < nextOff) { nextOff = m.lib[i].off; nextI = i; }
+    if (nextOff - pos > len) { start = pos; len = nextOff - pos; }
+    if (nextI < 0) break;
+    pos = m.lib[nextI].off + round4k(m.lib[nextI].size);
+  }
+}
+
+uint32_t MacMachine::libraryFree() const { uint32_t s, l; freeGap(s, l); return l; }
+
+bool MacMachine::useDisk(int i) {
+  if (i < 0 || i >= LIB_MAX || !m.lib[i].size) return false;
+  flushDisk();
+  m.active = i; diskBase = m.lib[i].off; m.diskSize = m.lib[i].size;
+  snprintf(m.diskName, sizeof m.diskName, "%s", m.lib[i].name);
+  secIdx = -1; secDirty = false;
   saveMeta();
+  return true;
+}
+
+bool MacMachine::removeDisk(int i) {
+  if (i < 0 || i >= LIB_MAX || !m.lib[i].size) return false;
+  if (i == m.active) { flushDisk(); m.active = -1; m.diskSize = 0; m.diskName[0] = 0; secIdx = -1; secDirty = false; }
+  m.lib[i].size = 0; m.lib[i].name[0] = 0;
+  saveMeta();
+  return true;
 }

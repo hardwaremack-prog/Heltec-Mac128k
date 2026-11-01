@@ -39,7 +39,12 @@ struct MacMeta {
   uint32_t lastRamKB;    // RAM size used by the last boot
   uint32_t crashCount;   // boots in a row that ended in a crash (safe mode at 3)
   uint32_t reserved[13];
+  // disk library (several disks kept in the disk area; one is in use)
+  uint32_t libMagic;     // 'LIB1' once set up
+  int32_t active;        // library index of the disk in use, -1 = none
+  struct LibDisk { char name[48]; uint32_t off, size; } lib[16];
 };
+static const int LIB_MAX = 16;
 
 struct RomInfo { uint32_t checksum; bool checksumOk; const char* name; bool supported; };
 RomInfo identifyRom(const uint8_t* rom, size_t len);
@@ -49,7 +54,7 @@ enum DiskFormat { DISK_RAW, DISK_DC42, DISK_MACBINARY_DC42, DISK_UNKNOWN };
 DiskFormat detectDiskFormat(const uint8_t* head, size_t n, uint32_t& dataStart, uint32_t& dataLen);
 const char* diskFormatName(DiskFormat f);
 // What's on the disk: "MFS", "HFS" or ""; bootable = has boot blocks ('LK')
-void inspectDisk(FlashArea* disk, uint32_t size, bool& bootable, std::string& fs, std::string& volName);
+void inspectDisk(FlashArea* disk, uint32_t base, uint32_t size, bool& bootable, std::string& fs, std::string& volName);
 
 class MacMachine {
  public:
@@ -103,10 +108,15 @@ class MacMachine {
   void beginRomUpload();                              // staging = the patched-copy area
   bool romUploadChunk(const uint8_t* d, size_t n);    // false = too big
   bool finishRomUpload(std::string& msg);             // validates, then keeps it as the ROM
-  void beginDiskUpload(const std::string& name);
+  // replaceIndex >= 0 overwrites that library disk (same or smaller size); activate = make it the disk in use
+  void beginDiskUpload(const std::string& name, int replaceIndex = -1, bool activate = true);
   bool diskUploadChunk(const uint8_t* d, size_t n);   // false = error (msg in uploadMsg)
   bool finishDiskUpload(std::string& msg);
-  void ejectDisk();
+  void ejectDisk();                                   // removes the disk in use from the library
+  bool removeDisk(int i);
+  bool useDisk(int i);                                // takes effect when the Mac starts
+  uint32_t libraryFree() const;                       // bytes in the biggest free gap
+  int lastUploadIndex = -1;
   std::string uploadMsg;
   void stop();                                        // release RAM + ROM mapping (before uploads)
 
@@ -129,6 +139,9 @@ class MacMachine {
   int32_t secIdx = -1;
   bool secDirty = false;
   bool loadSector(int32_t idx);
+  uint32_t diskBase = 0;                              // where the disk in use starts in the disk area
+  void freeGap(uint32_t& start, uint32_t& len, int ignore = -1) const;
+  int upReplace = -1; bool upActivate = true; uint32_t upBase = 0, upLimit = 0;
   uint8_t audio[AUDIO_FRAMES][AUDIO_BYTES];
   volatile int aHead = 0, aTail = 0;
   void captureAudio();

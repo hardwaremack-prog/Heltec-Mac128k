@@ -450,6 +450,11 @@ const MacFiles = (() => {
   function crc16(d) { let c = 0; for (let i = 0; i < d.length; i++) { c ^= d[i]; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xA001 : c >>> 1; } return c; }
 
   function sitDecode(method, packed, outLen) {
+    if (method === 15) {
+      const A = typeof SitArsenic !== 'undefined' ? SitArsenic : (typeof require !== 'undefined' ? require('./sit-arsenic.js') : null);
+      if (!A) throw new Error('StuffIt "Arsenic" compression needs sit-arsenic.js');
+      return A.decode(packed, outLen);
+    }
     switch (method & 15) {
       case 0: return packed.subarray(0, outLen);
       case 1: return rle90(packed, outLen);
@@ -472,10 +477,57 @@ const MacFiles = (() => {
       const rs = p + 112, ds = rs + crl;
       const full = [...path, name].join('/');
       const rsrcPacked = d.subarray(rs, rs + crl), dataPacked = d.subarray(ds, ds + cdl);
-      out.push({ name: full, size: dl, type, creator, rsrcSize: rl,
+      out.push({ name: full, size: dl, type, creator, rsrcSize: rl, finderFlags: be16(h, 74),
         data: async () => { const r = sitDecode(dm, dataPacked, dl); if (dl && (dm & 15) && crc16(r) !== dcrc) throw new Error(full + ': checksum mismatch, the archive may be damaged'); return r; },
         rsrc: async () => sitDecode(rm, rsrcPacked, rl) });
       p = ds + cdl;
+    }
+    return out;
+  }
+
+  // StuffIt 5 container ("StuffIt (c)1997-..."): same per-fork methods as older StuffIt.
+  // Layout follows The Unarchiver/XADMaster's notes; method 15 (Arsenic) isn't supported.
+  function unsit5(d) {
+    if (macRoman(d, 0, 16) !== 'StuffIt (c)1997-') throw new Error('Not a StuffIt 5 archive');
+    const version = d[82], flags = d[83];
+    if (version !== 5) throw new Error('Unknown StuffIt 5 archive version ' + version);
+    if (flags & 0x80) throw new Error('This StuffIt archive is password-protected');
+    let todo = be16(d, 92), p = be32(d, 94);
+    const dirs = {}, out = [];
+    while (todo-- > 0 && p + 48 <= d.length) {
+      const offs = p;
+      if (be32(d, p) !== 0xA5A5A5A5) throw new Error('Damaged StuffIt 5 archive');
+      const ver = d[p + 4], hsize = be16(d, p + 6), eflags = d[p + 9];
+      const dirOffs = be32(d, p + 26), nameLen = be16(d, p + 30);
+      const dataLen = be32(d, p + 34), dataComp = be32(d, p + 38), dataCrc = be16(d, p + 42);
+      p += 46;
+      let dataMethod = 0, nFiles = 0;
+      if (eflags & 0x40) {
+        nFiles = be16(d, p); p += 2;
+        if (dataLen === 0xFFFFFFFF) { todo++; continue; }
+      } else {
+        dataMethod = d[p]; const passLen = d[p + 1]; p += 2;
+        if (passLen) throw new Error('This StuffIt archive is password-protected');
+      }
+      const name = macRoman(d, p, nameLen); p += nameLen;
+      if (p < offs + hsize) { const cl = be16(d, p); p += 4 + cl; }
+      const something = be16(d, p); p += 4;
+      const type = macRoman(d, p, 4), creator = macRoman(d, p + 4, 4); p += 10;
+      p += ver === 1 ? 22 : 18;
+      let rsrcLen = 0, rsrcComp = 0, rsrcMethod = 0;
+      if (something & 1) {
+        rsrcLen = be32(d, p); rsrcComp = be32(d, p + 4); rsrcMethod = d[p + 12];   // +8 crc, +10 unknown
+        const passLen = d[p + 13]; p += 14;
+        if (passLen) throw new Error('This StuffIt archive is password-protected');
+      }
+      const parent = dirs[dirOffs] || '';
+      const full = parent ? parent + '/' + name : name;
+      if (eflags & 0x40) { dirs[offs] = full; todo += nFiles; continue; }
+      const rsrcPacked = d.subarray(p, p + rsrcComp), dataPacked = d.subarray(p + rsrcComp, p + rsrcComp + dataComp);
+      p += rsrcComp + dataComp;
+      out.push({ name: full, size: dataLen, type, creator, rsrcSize: rsrcLen, methods: [dataMethod, rsrcMethod], finderFlags: be16(d, p - (ver === 1 ? 22 : 18) - 2),
+        data: async () => { const r = sitDecode(dataMethod, dataPacked, dataLen); if (dataLen && dataMethod !== 15 && (dataMethod & 15) && crc16(r) !== dataCrc) throw new Error(full + ': checksum mismatch, the archive may be damaged'); return r; },
+        rsrc: async () => sitDecode(rsrcMethod, rsrcPacked, rsrcLen) });
     }
     return out;
   }
@@ -517,9 +569,64 @@ const MacFiles = (() => {
     return [{ name, size: dl, type: macRoman(d, 65, 4), creator: macRoman(d, 69, 4), rsrcSize: rl, data: async () => data, rsrc: async () => rsrc }];
   }
 
+  // ------------------------------------------------------------ write a file onto an MFS (400K) disk
+  // Adds a Mac file (data + resource forks, type/creator) to the disk's top level.
+  // Returns a new disk image; throws with a plain message if it can't.
+  function addToMFS(disk, file) {
+    const d = new Uint8Array(disk), V = 1024;
+    if (be16(d, V) !== 0xD2D7) throw new Error(be16(d, V) === 0x4244 ? 'Programs can only be added to 400K MFS disks (System 1-3 era), not HFS disks' : 'That disk isn\'t a Mac MFS disk');
+    const w16 = (o, v) => { d[o] = v >> 8; d[o + 1] = v; }, w32 = (o, v) => { w16(o, v >>> 16); w16(o + 2, v & 0xFFFF); };
+    const nFiles = be16(d, V + 12), dirSt = be16(d, V + 14), dirLen = be16(d, V + 16);
+    const nBlks = be16(d, V + 18), blkSize = be32(d, V + 20), alSt = be16(d, V + 28);
+    const nextNum = be32(d, V + 30), free = be16(d, V + 34);
+    // allocation map: 12-bit entries for blocks 2..nBlks+1, right after the 64-byte volume info
+    const MAP = V + 64;
+    const getMap = n => { const i = n - 2, o = MAP + ((i * 3) >> 1); return i & 1 ? ((d[o] & 15) << 8) | d[o + 1] : (d[o] << 4) | (d[o + 1] >> 4); };
+    const setMap = (n, v) => { const i = n - 2, o = MAP + ((i * 3) >> 1);
+      if (i & 1) { d[o] = (d[o] & 0xF0) | (v >> 8); d[o + 1] = v & 255; } else { d[o] = v >> 4; d[o + 1] = (d[o + 1] & 15) | ((v & 15) << 4); } };
+    const need = len => Math.ceil(len / blkSize);
+    const nData = need(file.data.length), nRsrc = need(file.rsrc.length);
+    if (nData + nRsrc > free) throw new Error('Not enough free space on that disk (' + Math.round(free * blkSize / 1024) + ' KB free, ' + file.name + ' needs ' + Math.round((nData + nRsrc) * blkSize / 1024) + ' KB)');
+    // existing names, so we don't duplicate one
+    const names = new Set(); let slot = -1;
+    for (let b = 0; b < dirLen; b++) {
+      let p = (dirSt + b) * 512; const end = p + 512;
+      while (p < end && d[p] & 0x80) { const nl = d[p + 50]; names.add(macRoman(d, p + 51, nl).toLowerCase()); p += (51 + nl + 1) & ~1; }
+      const entryLen = (51 + Math.min(file.name.length, 63) + 1 + 2) & ~1;
+      if (slot < 0 && end - p >= entryLen) slot = p;
+    }
+    if (slot < 0) throw new Error('That disk\'s file directory is full');
+    let name = file.name.slice(0, 63);
+    for (let k = 2; names.has(name.toLowerCase()); k++) name = file.name.slice(0, 58) + ' ' + k;
+    // claim blocks and copy each fork
+    const fork = bytes => {
+      const n = need(bytes.length); if (!n) return 0;
+      const blocks = [];
+      for (let b = 2; b < nBlks + 2 && blocks.length < n; b++) if (getMap(b) === 0) blocks.push(b);
+      blocks.forEach((b, i) => { setMap(b, i + 1 < n ? blocks[i + 1] : 1);
+        d.set(bytes.subarray(i * blkSize, (i + 1) * blkSize), alSt * 512 + (b - 2) * blkSize); });
+      return blocks[0];
+    };
+    const dStart = fork(file.data), rStart = fork(file.rsrc);
+    // directory entry
+    const p = slot, now = Math.floor(Date.now() / 1000) + 2082844800;
+    d.fill(0, p, p + 51 + name.length + 1);
+    d[p] = 0x80; d[p + 1] = 0;
+    for (let i = 0; i < 4; i++) { d[p + 2 + i] = (file.type || '????').charCodeAt(i); d[p + 6 + i] = (file.creator || '????').charCodeAt(i); }
+    w16(p + 10, (file.finderFlags || 0) & ~0x0100);   // not yet "inited": the Finder places the icon
+    w32(p + 18, nextNum);
+    w16(p + 22, dStart); w32(p + 24, file.data.length); w32(p + 28, nData * blkSize);
+    w16(p + 32, rStart); w32(p + 34, file.rsrc.length); w32(p + 38, nRsrc * blkSize);
+    w32(p + 42, now >>> 0); w32(p + 46, now >>> 0);
+    d[p + 50] = name.length; for (let i = 0; i < name.length; i++) d[p + 51 + i] = name.charCodeAt(i) & 255;
+    w16(V + 12, nFiles + 1); w32(V + 30, nextNum + 1); w16(V + 34, free - nData - nRsrc);
+    w32(V + 6, now >>> 0);   // modified
+    return { disk: d, name };
+  }
+
   // ------------------------------------------------------------ the main entry point
   // Opens a file and everything nested inside it. Returns {disks:[{name, raw, how, info}], other:[names], notes:[]}
-  async function open(name, data, depth = 0, result = { disks: [], other: [], notes: [] }) {
+  async function open(name, data, depth = 0, result = { disks: [], other: [], notes: [], files: [] }) {
     if (depth > 6) return result;
     const n = lower(name);
     const disk = asDisk(data, name);
@@ -535,7 +642,8 @@ const MacFiles = (() => {
       else if (data[0] === 0x1F && data[1] === 0x8B) kids = [{ name: name.replace(/\.gz$/i, ''), data: async () => inflate(data, 'gzip') }];
       else if (td.decode(data.subarray(0, Math.min(data.length, 2000))).includes('(This file must be converted with BinHex')) kids = unhqx(data);
       else if (isMacBinary(data)) kids = unmacbinary(data);
-      else if (macRoman(data, 0, 8) === 'StuffIt ' || macRoman(data, 0, 7) === 'StuffIt') throw new Error('StuffIt 5 and later (.sitx/.sit 5) archives aren\'t supported. Try a DiskCopy or .img version.');
+      else if (macRoman(data, 0, 16) === 'StuffIt (c)1997-') kids = unsit5(data);
+      else if (macRoman(data, 0, 7) === 'StuffIt') throw new Error('StuffIt X (.sitx) archives aren\'t supported. Try a DiskCopy or .img version.');
     } catch (e) { result.notes.push(name + ': ' + e.message); return result; }
     if (!kids) {
       if (disk) result.disks.push({ name, raw: disk.raw, how: disk.how, info: diskInfo(disk.raw) });
@@ -545,13 +653,17 @@ const MacFiles = (() => {
     for (const k of kids) {
       let kd;
       try { kd = await k.data(); } catch (e) { result.notes.push(k.name + ': ' + e.message); continue; }
-      if (!kd.length && k.rsrcSize) { result.other.push(k.name + ' (a Mac application or file, not a disk)'); continue; }
-      if (k.type === 'APPL') { result.other.push(k.name + ' (a Mac application, not a disk)'); continue; }
+      if (k.rsrc && (k.type === 'APPL' || (!kd.length && k.rsrcSize) || (k.type && k.type !== 'dImg' && !asDisk(kd, k.name)))) {
+        let rs; try { rs = k.rsrcSize ? await k.rsrc() : new Uint8Array(0); } catch (e) { result.notes.push(k.name + ': ' + e.message); continue; }
+        (result.files = result.files || []).push({ name: k.name.split('/').pop(), path: k.name, type: k.type, creator: k.creator,
+          finderFlags: k.finderFlags || 0, data: kd, rsrc: rs });
+        continue;
+      }
       await open(k.name, kd, depth + 1, result);
     }
     return result;
   }
 
-  return { open, diskInfo, _test: { lzma, lzma2, sit13, unsit, unzip, un7z, unhqx, crc16 } };
+  return { open, diskInfo, addToMFS, _test: { lzma, lzma2, sit13, unsit, unsit5, unzip, un7z, unhqx, crc16 } };
 })();
 if (typeof module !== 'undefined') module.exports = MacFiles;

@@ -148,13 +148,16 @@ static std::vector<uint8_t> testRom(uint32_t ramBytes, bool sound) {
 }
 
 int main(int argc, char** argv) {
-  std::string romFile, diskFile, dump;
+  std::string romFile, dump;
+  std::vector<std::string> diskFiles;
+  int useIdx = -1;
   int frames = 0, ramKB = 0;
   bool test = false, fresh = false, sound = false;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--rom" && i + 1 < argc) romFile = argv[++i];
-    else if (a == "--disk" && i + 1 < argc) diskFile = argv[++i];
+    else if (a == "--disk" && i + 1 < argc) diskFiles.push_back(argv[++i]);
+    else if (a == "--use" && i + 1 < argc) useIdx = atoi(argv[++i]);
     else if (a == "--frames" && i + 1 < argc) frames = atoi(argv[++i]);
     else if (a == "--dump" && i + 1 < argc) dump = argv[++i];
     else if (a == "--ram" && i + 1 < argc) ramKB = atoi(argv[++i]);
@@ -177,13 +180,20 @@ int main(int argc, char** argv) {
     bool ok = mac.finishRomUpload(msg);
     printf("ROM: %s %s\n", ok ? "OK" : "REJECTED", msg.c_str());
   }
-  if (!diskFile.empty()) {
+  for (size_t di = 0; di < diskFiles.size(); di++) {
+    const std::string& diskFile = diskFiles[di];
     auto d = loadFile(diskFile);
     std::string n = diskFile.substr(diskFile.find_last_of('/') + 1);
-    mac.beginDiskUpload(n);
+    mac.beginDiskUpload(n, -1, di == 0);
     for (size_t o = 0; o < d.size(); o += 1436) mac.diskUploadChunk(d.data() + o, std::min<size_t>(1436, d.size() - o));
     bool ok = mac.finishDiskUpload(msg);
-    printf("Disk: %s %s\n", ok ? "OK" : "REJECTED", msg.c_str());
+    printf("Disk: %s %s (library slot %d)\n", ok ? "OK" : "REJECTED", msg.c_str(), mac.lastUploadIndex);
+  }
+  if (useIdx >= 0) printf("Use disk %d: %s\n", useIdx, mac.useDisk(useIdx) ? "OK" : "no such disk");
+  {
+    const MacMeta& mm = mac.meta();
+    for (int i = 0; i < LIB_MAX; i++) if (mm.lib[i].size) printf("  library %d%s: %s  %u bytes at %u\n", i, i == mm.active ? " (in use)" : "", mm.lib[i].name, mm.lib[i].size, mm.lib[i].off);
+    printf("  free: %u KB\n", mac.libraryFree() / 1024);
   }
 
   std::vector<uint8_t> trom;
@@ -252,6 +262,7 @@ int main(int argc, char** argv) {
       char req[2048]; int n = recv(c, req, sizeof req - 1, 0); req[n > 0 ? n : 0] = 0;
       std::string r(req), body, type = "text/html";
       if (r.find("GET /macfiles.js") == 0) { body = MACFILES_JS; type = "application/javascript"; }
+      else if (r.find("GET /sit-arsenic.js") == 0) { body = SIT_ARSENIC_JS; type = "application/javascript"; }
       else if (r.find("GET /api/status") == 0) {
         char j[512];
         snprintf(j, sizeof j, "{\"ip\":\"127.0.0.1\",\"mode\":\"sta\",\"ssid\":\"host\",\"rssi\":0,\"state\":\"%s\",\"ram\":%u,\"ramSetting\":0,"

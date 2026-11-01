@@ -208,12 +208,19 @@ static String jsonEsc(const String& s) {
 }
 
 static String diskInfo;
-static void refreshDiskInfo() {
+static String describeDisk(uint32_t off, uint32_t size) {
   bool boot; std::string fs, vol;
-  inspectDisk(&diskPart, mac.meta().diskSize, boot, fs, vol);
-  diskInfo = fs.c_str();
-  if (vol.size()) diskInfo += String(" \"") + vol.c_str() + "\"";
-  if (mac.meta().diskSize) diskInfo += boot ? (diskInfo.length() ? ", bootable" : "bootable") : (diskInfo.length() ? ", not bootable" : "not bootable");
+  inspectDisk(&diskPart, off, size, boot, fs, vol);
+  String s = fs.c_str();
+  if (vol.size()) s += String(" \"") + vol.c_str() + "\"";
+  if (size) s += boot ? (s.length() ? ", startup disk" : "startup disk") : (s.length() ? ", not a startup disk" : "not a startup disk");
+  return s;
+}
+static String libInfo[LIB_MAX];
+static void refreshDiskInfo() {
+  const MacMeta& m = mac.meta();
+  for (int i = 0; i < LIB_MAX; i++) libInfo[i] = m.lib[i].size ? describeDisk(m.lib[i].off, m.lib[i].size) : String();
+  diskInfo = m.active >= 0 ? libInfo[m.active] : String();
 }
 
 static bool uploadOk = false;
@@ -222,8 +229,12 @@ static String uploadMsg;
 static void setupWeb() {
   web.on("/", HTTP_GET, [] { web.send_P(200, "text/html", INDEX_HTML); });
   web.on("/macfiles.js", HTTP_GET, [] {
-    web.sendHeader("Cache-Control", "max-age=86400");
+    web.sendHeader("Cache-Control", "max-age=3600");
     web.send_P(200, "application/javascript", MACFILES_JS);
+  });
+  web.on("/sit-arsenic.js", HTTP_GET, [] {
+    web.sendHeader("Cache-Control", "max-age=3600");
+    web.send_P(200, "application/javascript", SIT_ARSENIC_JS);
   });
 
   web.on("/api/status", HTTP_GET, [] {
@@ -240,6 +251,14 @@ static void setupWeb() {
     j += "\"romOk\":" + String(m.romOk ? 1 : 0) + ",\"romName\":\"" + String(ri.name) + "\",";
     j += "\"disk\":" + String(m.diskSize) + ",\"diskName\":\"" + jsonEsc(m.diskName) + "\",\"diskInfo\":\"" + jsonEsc(diskInfo) + "\",";
     j += "\"diskRO\":" + String(m.diskRO ? 1 : 0) + ",\"heap\":" + String(ESP.getFreeHeap()) + ",";
+    j += "\"active\":" + String(m.active) + ",\"libFree\":" + String(mac.libraryFree()) + ",\"lib\":[";
+    bool first = true;
+    for (int i = 0; i < LIB_MAX; i++) {
+      if (!m.lib[i].size) continue;
+      j += String(first ? "" : ",") + "{\"i\":" + String(i) + ",\"n\":\"" + jsonEsc(m.lib[i].name) + "\",\"s\":" + String(m.lib[i].size) + ",\"d\":\"" + jsonEsc(libInfo[i]) + "\"}";
+      first = false;
+    }
+    j += "],";
     j += "\"heapBlock\":" + String((unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)) + "}";
     web.send(200, "application/json", j);
   });
@@ -282,19 +301,46 @@ static void setupWeb() {
     std::string m;
     uploadOk = mac.finishDiskUpload(m);
     web.send(uploadOk ? 200 : 400, "text/plain", m.c_str());
-    restartAt = millis() + 800;
+    refreshDiskInfo();
+    // the Mac's RAM was released for the upload; restart unless more disks are coming (?restart=0)
+    if (web.arg("restart") != "0" || !uploadOk) restartAt = millis() + 800;
   }, [] {
     HTTPUpload& u = web.upload();
-    if (u.status == UPLOAD_FILE_START) { pauseEmu(); mac.beginDiskUpload(u.filename.c_str()); }
+    if (u.status == UPLOAD_FILE_START) {
+      pauseEmu();
+      // ?replace=N overwrites library disk N; ?activate=0 adds without switching to it
+      int rep = web.hasArg("replace") ? web.arg("replace").toInt() : -1;
+      mac.beginDiskUpload(u.filename.c_str(), rep, web.arg("activate") != "0");
+    }
     else if (u.status == UPLOAD_FILE_WRITE) mac.diskUploadChunk(u.buf, u.currentSize);
+  });
+
+  // ---- disk library
+  web.on("/api/use", HTTP_POST, [] {
+    pauseEmu();
+    bool ok = mac.useDisk(web.arg("i").toInt());
+    web.send(ok ? 200 : 400, "text/plain", ok ? "ok" : "No such disk");
+    restartAt = millis() + 500;
+  });
+  web.on("/api/libdel", HTTP_POST, [] {
+    int i = web.arg("i").toInt();
+    bool wasActive = i == mac.meta().active;
+    if (wasActive) pauseEmu();
+    bool ok = mac.removeDisk(i);
+    refreshDiskInfo();
+    web.send(ok ? 200 : 400, "text/plain", ok ? "ok" : "No such disk");
+    if (wasActive) restartAt = millis() + 500;
   });
 
   // ---- disk download (the Mac pauses while it streams)
   web.on("/api/disk.img", HTTP_GET, [] {
-    uint32_t size = mac.meta().diskSize;
-    if (!size) { web.send(404, "text/plain", "No disk"); return; }
+    const MacMeta& mm = mac.meta();
+    int i = web.hasArg("i") ? web.arg("i").toInt() : mm.active;
+    if (i < 0 || i >= LIB_MAX || !mm.lib[i].size) { web.send(404, "text/plain", "No disk"); return; }
+    uint32_t size = mm.lib[i].size, base = mm.lib[i].off;
     pauseEmu();
-    String name = mac.meta().diskName[0] ? String(mac.meta().diskName) : String("macmesh-disk.img");
+    mac.flushDisk();
+    String name = mm.lib[i].name[0] ? String(mm.lib[i].name) : String("macmesh-disk.img");
     web.sendHeader("Content-Disposition", "attachment; filename=\"" + name + "\"");
     web.setContentLength(size);
     web.send(200, "application/octet-stream", "");
@@ -304,7 +350,7 @@ static void setupWeb() {
     WiFiClient cl = web.client();
     for (uint32_t off = 0; off < size && cl.connected(); off += B) {
       uint32_t n = size - off < B ? size - off : B;
-      diskPart.read(off, buf, n);
+      diskPart.read(base + off, buf, n);
       if (cl.write(buf, n) != n) break;
     }
     free(buf);
