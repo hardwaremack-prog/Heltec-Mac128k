@@ -9,10 +9,11 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--ink);color:#eee}
 header b{font:600 18px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5px}
 header span{color:#aaa;font-size:13px}#dot{width:10px;height:10px;border-radius:50%;background:#777}
-main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:16px}
+main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px}
 #screenBox{background:#c9c5bb;border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;justify-items:center}
-#bezel{background:#ebe7dc;border-radius:10px;padding:18px 18px 26px;box-shadow:inset 0 0 0 1px #cfcabd,0 2px 0 #b3ad9f;width:100%;max-width:1060px}
-canvas{display:block;width:100%;image-rendering:pixelated;background:#888;border-radius:3px;outline:none;cursor:none;touch-action:none}
+#bezel{background:#ebe7dc;border-radius:10px;padding:18px 18px 26px;box-shadow:inset 0 0 0 1px #cfcabd,0 2px 0 #b3ad9f;width:100%;display:grid;justify-items:center}
+#bezel:fullscreen{max-width:none;border-radius:0;align-content:center;background:#111}
+canvas{display:block;width:100%;image-rendering:pixelated;image-rendering:crisp-edges;background:#888;outline:none;cursor:none;touch-action:none}
 canvas:focus{box-shadow:0 0 0 3px #8fb3d6}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
 button,.btn{font:inherit;padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);cursor:pointer}
@@ -37,6 +38,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bCmd" title="Hold Command for the next key or click">&#8984; Command</button>
   <button id="bOpt" title="Hold Option for the next key or click">&#8997; Option</button>
   <button id="bKbd">Keyboard</button>
+  <button id="bSize" title="Auto picks sharp when it's big enough. Sharp: every Mac pixel is exactly 2x2 or 3x3 screen pixels. Fill: uses all the space, slightly soft.">Pixels: auto</button>
   <button id="bFull">Full screen</button>
   <button id="bReset">Restart Mac</button>
  </div>
@@ -162,6 +164,24 @@ function sendText(t){const b=new TextEncoder().encode(t);for(let i=0;i<b.length;
 cv.addEventListener('paste',e=>{const t=e.clipboardData.getData('text');if(t){sendText(t);e.preventDefault()}});
 $('typeIt').onclick=()=>{sendText($('txt').value);msg('Typing...')};
 $('bFull').onclick=()=>{const b=$('bezel');(b.requestFullscreen||b.webkitRequestFullscreen||(()=>{})).call(b);cv.focus()};
+// Sharp pixels: size the screen so each Mac pixel covers a whole number of real screen pixels
+// (512 x k device pixels). Any other size makes nearest-neighbour scaling uneven, which looks fuzzy.
+let sizeMode='auto';try{sizeMode=localStorage.getItem('mmSize')||'auto'}catch(e){}
+function fitScreen(){
+ const b=$('bezel'),fs=document.fullscreenElement===b,dpr=window.devicePixelRatio||1;
+ const cs=getComputedStyle(b),availW=b.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+ // (in fullscreen the whole window is available)
+ const availH=fs?window.innerHeight-40:Infinity;
+ const k=Math.min(Math.floor(availW*dpr/512),Math.floor(availH*dpr/342));
+ const fillW=Math.min(availW,availH*512/342),sharpW=512*k/dpr;
+ // auto: sharp unless that would waste lots of space; on dense (phone/retina) screens fill looks fine
+ const sharp=sizeMode=='sharp'?k>=1:sizeMode=='fill'?false:(k>=1&&dpr<2&&sharpW>=0.7*fillW);
+ const w=sharp?sharpW:fillW;cv.style.width=w+'px';cv.style.height=(w*342/512)+'px';
+ $('bSize').textContent='Pixels: '+(sizeMode=='auto'?'auto ('+(sharp?'sharp':'fill')+')':sizeMode);$('bSize').classList.toggle('on',sharp)}
+$('bSize').onclick=()=>{sizeMode={auto:'sharp',sharp:'fill',fill:'auto'}[sizeMode]||'auto';try{localStorage.setItem('mmSize',sizeMode)}catch(e){}fitScreen()};
+window.addEventListener('resize',fitScreen);document.addEventListener('fullscreenchange',fitScreen);
+(window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
+fitScreen();
 $('bReset').onclick=async()=>{if(confirm('Restart the Mac? Unsaved work on the Mac is lost.')){await post('/api/reset');msg('Mac restarted')}};
 
 // ---------- status + settings
