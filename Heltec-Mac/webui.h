@@ -117,23 +117,35 @@ connect();
 
 // ---------- sound: Mac Plus = 370 samples per frame (~22.2 kHz), 8-bit unsigned
 const audio={on:false,ctx:null,node:null,
+ // AudioWorklet only exists on secure (https/localhost) pages; the board serves plain http, so
+ // there we play through a ScriptProcessorNode fed from this ring buffer instead.
+ rb:new Float32Array(48000),r:0,w:0,n:0,
  async start(){
-  if(!this.ctx){this.ctx=new (window.AudioContext||window.webkitAudioContext)();
-   const src=`class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(48000);this.r=0;this.w=0;this.n=0;
-    this.port.onmessage=e=>{const a=e.data;if(this.n+a.length>this.b.length*0.5){this.r=this.w;this.n=0}
-     for(let i=0;i<a.length;i++){this.b[this.w]=a[i];this.w=(this.w+1)%this.b.length}this.n+=a.length}}
-    process(i,o){const out=o[0][0];for(let k=0;k<out.length;k++){if(this.n>0){out[k]=this.b[this.r];this.r=(this.r+1)%this.b.length;this.n--}else out[k]=0}
-     for(let c=1;c<o[0].length;c++)o[0][c].set(out);return true}}registerProcessor('macsnd',P)`;
-   await this.ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
-   this.node=new AudioWorkletNode(this.ctx,'macsnd');this.node.connect(this.ctx.destination);this.pos=0;this.last=0}
+  if(!this.ctx){this.ctx=new (window.AudioContext||window.webkitAudioContext)();this.pos=0;
+   if(this.ctx.audioWorklet&&window.isSecureContext){
+    const src=`class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(48000);this.r=0;this.w=0;this.n=0;
+     this.port.onmessage=e=>{const a=e.data;if(this.n+a.length>this.b.length*0.5){this.r=this.w;this.n=0}
+      for(let i=0;i<a.length;i++){this.b[this.w]=a[i];this.w=(this.w+1)%this.b.length}this.n+=a.length}}
+     process(i,o){const out=o[0][0];for(let k=0;k<out.length;k++){if(this.n>0){out[k]=this.b[this.r];this.r=(this.r+1)%this.b.length;this.n--}else out[k]=0}
+      for(let c=1;c<o[0].length;c++)o[0][c].set(out);return true}}registerProcessor('macsnd',P)`;
+    await this.ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
+    this.node=new AudioWorkletNode(this.ctx,'macsnd');this.worklet=true}
+   else{const sp=this.ctx.createScriptProcessor(2048,0,1);
+    sp.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0),b=this.rb,L=b.length;
+     for(let k=0;k<out.length;k++){if(this.n>0){out[k]=b[this.r];this.r=(this.r+1)%L;this.n--}else out[k]=0}};
+    this.node=sp;this.worklet=false}
+   this.node.connect(this.ctx.destination)}
   await this.ctx.resume();this.on=true;send([0x61,1])},
  stop(){this.on=false;send([0x61,0]);if(this.ctx)this.ctx.suspend()},
+ push(o){if(this.worklet){this.node.port.postMessage(o);return}
+  const b=this.rb,L=b.length;if(this.n+o.length>L*0.5){this.r=this.w;this.n=0}   // too far behind: drop the backlog
+  for(let i=0;i<o.length;i++){b[this.w]=o[i];this.w=(this.w+1)%L}this.n+=o.length},
  frame(d){if(!this.node)return;const rate=this.ctx.sampleRate,step=22200/rate;
   const silent=d[1]==0xFF,vol=silent?0:d[1]/7*0.6,n=Math.floor((370-this.pos)/step);const o=new Float32Array(Math.max(n,0));
   for(let k=0;k<o.length;k++){const x=this.pos+k*step,i=Math.floor(x),f=x-i;
    if(silent)o[k]=0;else{const a=d[2+i],b=i+1<370?d[2+i+1]:a;o[k]=((a+(b-a)*f)-128)/128*vol}}
-  this.pos=this.pos+o.length*step-370;this.node.port.postMessage(o)}};
-$('bSound').onclick=async()=>{try{if(audio.on)audio.stop();else await audio.start()}catch(e){msg('Sound needs a newer browser: '+e.message,1)}
+  this.pos=this.pos+o.length*step-370;this.push(o)}};
+$('bSound').onclick=async()=>{try{if(audio.on)audio.stop();else await audio.start()}catch(e){msg('Couldn\'t start sound: '+e.message,1)}
  $('bSound').textContent='Sound: '+(audio.on?'on':'off');$('bSound').classList.toggle('on',audio.on)};
 
 // ---------- mouse / touch
