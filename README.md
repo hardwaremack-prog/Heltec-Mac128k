@@ -60,9 +60,15 @@ The OLED then shows the board's address on your network (it also answers to `mac
 
 On the web page:
 
-1. **Mac ROM**: upload your Mac Plus ROM. It must be **version 3** (128 KB, checksum
-   `4D1F8172`). The page checks the file and says what it is if it's a different ROM. Dumps with
-   extra bytes after the 128 KB ROM are fine; the extra is ignored. No Apple ROM is included.
+1. **Mac ROM**: upload your own ROM. Two are supported:
+   - the original **Mac 128K/512K ROM** (64 KB, checksum `28BA61CE`). **Best for this board.**
+     It uses less of the Mac's memory than the Plus ROM, so 1984-era software like MacPaint 1.1
+     fits in 128 KB. With it the board is a real Mac 128K. It reads 400K MFS disks only.
+   - the **Mac Plus ROM version 3** (128 KB, checksum `4D1F8172`). It also reads 800K HFS disks,
+     but on a 128 KB Mac it leaves less room: MacPaint 1.1 says there isn't enough memory.
+
+   The page checks the file and says what it is if it's a different ROM. Dumps with extra bytes
+   after the ROM are fine; the extra is ignored. No Apple ROM is included.
 2. **Disk**: upload a startup disk. Raw `.img`/`.dsk` files and **DiskCopy 4.2** `.image` files
    work, and so do archives with a disk inside: **.zip, .7z, .sit** (StuffIt 1.5–4), **.hqx**
    (BinHex), **.bin** (MacBinary) and **.gz**, even nested (a .sit inside a .zip). Your browser
@@ -157,9 +163,12 @@ python3 tests/viewers_test.py                # (with --testrom --ram 128) checks
 
 ## Licences
 
-Mac Mesh code: yours to use. It includes:
+Mac Mesh's own code is yours to use. The firmware also includes code under other licences:
+- the replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II**
+  © Christian Bauer, **GNU GPL v2**, so the firmware as a whole is distributed under GPL v2
 - **umac** © 2024 Matt Evans, MIT licence (`licenses/umac-LICENSE.txt`), with Mac Mesh changes:
-  RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling.
+  RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling,
+  support for the original 64 KB Mac 128K ROM (driver swap and drive-queue setup).
 - **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)
 - **SoftFloat** (used by Musashi) © John R. Hauser, see `licenses/SoftFloat-README.txt`
 - Archive formats: StuffIt method 13 is implemented from the format as described by The

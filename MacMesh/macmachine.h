@@ -22,6 +22,7 @@ static const uint32_t ROM_AREA_PATCHED = 0x20000;      // patched copy the emula
 static const uint32_t ROM_AREA_META = 0x40000;         // 4 KB of settings
 static const uint32_t ROM_AREA_SIZE = 0x41000;
 static const uint32_t PLUS_V3_CHECKSUM = 0x4D1F8172;
+static const uint32_t MAC128K_CHECKSUM = 0x28BA61CE;   // original 64 KB Mac 128K/512K ROM
 
 struct MacMeta {
   uint32_t magic;        // 'MMSH'

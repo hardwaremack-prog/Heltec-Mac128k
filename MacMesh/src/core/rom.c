@@ -42,6 +42,11 @@
 
 #define ROM_PLUSv3_VERSION      0x4d1f8172
 #define ROM_PLUSv3_SONYDRV      0x17d30
+/* MacMesh: the original 64 KB Mac 128K/512K ROM.  Its .Sony driver header is
+ * at 0x1690; the 64 KB image is mirrored to fill the 128 KB ROM window. */
+#define ROM_128K_VERSION        0x28ba61ce
+#define ROM_128K_SONYDRV        0x1690
+#define ROM_128K_SIZE           0x10000
 
 #define M68K_INST_NOP           0x4e71
 
@@ -231,6 +236,23 @@ static void     rom_patch_plusv3(uint8_t *rom_base)
 #endif
 }
 
+static void     rom_patch_128k(uint8_t *rom_base)
+{
+        /* Replace .Sony with the paravirtual driver, as for the Plus: */
+        memcpy(rom_base + ROM_128K_SONYDRV, sony_driver, sizeof(sony_driver));
+        ROM_WR32(ROM_128K_SONYDRV + sizeof(sony_driver) - 4, PV_SONY_ADDR);
+
+        /* Keep the ROM's self-test happy: recompute its checksum (sum of the
+         * 16-bit words after the 4-byte checksum field). */
+        uint32_t sum = 0;
+        for (int i = 4; i < ROM_128K_SIZE; i += 2)
+                sum += (rom_base[i] << 8) | rom_base[i + 1];
+        ROM_WR32(0, sum);
+
+        /* Mirror into the second 64 KB, like the real 64 KB ROM in its 128 KB window */
+        memcpy(rom_base + ROM_128K_SIZE, rom_base, ROM_128K_SIZE);
+}
+
 int      rom_patch(uint8_t *rom_base)
 {
         uint32_t v = rom_get_version(rom_base);
@@ -240,6 +262,11 @@ int      rom_patch(uint8_t *rom_base)
         switch(v) {
         case ROM_PLUSv3_VERSION:
                 rom_patch_plusv3(rom_base);
+                r = 0;
+                break;
+
+        case ROM_128K_VERSION:
+                rom_patch_128k(rom_base);
                 r = 0;
                 break;
 

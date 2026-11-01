@@ -35,7 +35,8 @@ RomInfo identifyRom(const uint8_t* rom, size_t len) {
   };
   for (auto& k : known)
     if (k.ck == r.checksum) r.name = k.name;
-  r.supported = r.checksum == PLUS_V3_CHECKSUM && r.checksumOk && len == MAC_ROM_SIZE;
+  r.supported = (r.checksum == PLUS_V3_CHECKSUM && len == MAC_ROM_SIZE) || (r.checksum == MAC128K_CHECKSUM && len == 0x10000);
+  r.supported = r.supported && r.checksumOk;
   return r;
 }
 
@@ -345,48 +346,50 @@ bool MacMachine::romUploadChunk(const uint8_t* d, size_t n) {
   return true;
 }
 
+// The uploaded file is in the staging area. Accepts the Mac Plus v3 ROM (128 KB) or the
+// original Mac 128K/512K ROM (64 KB, mirrored to fill the 128 KB ROM window).
 bool MacMachine::finishRomUpload(std::string& msg) {
-  if (upPos < MAC_ROM_SIZE || upPos > 2 * MAC_ROM_SIZE) {
-    char b[160];
-    snprintf(b, sizeof b, "That file is %u bytes; a Mac Plus ROM is 131072 bytes (128 KB).", (unsigned)upPos);
-    msg = b;
-    return false;
-  }
-  // checksum + identify, reading back from flash in pieces
-  uint8_t head[8];
+  char b[220];
+  uint8_t head[8], buf[1024];
   romArea->read(ROM_AREA_PATCHED, head, 8);
   uint32_t ck = ((uint32_t)head[0] << 24) | (head[1] << 16) | (head[2] << 8) | head[3];
-  uint32_t sum = 0;
-  uint8_t buf[1024];
-  for (uint32_t off = 0; off < MAC_ROM_SIZE; off += sizeof buf) {
-    romArea->read(ROM_AREA_PATCHED + off, buf, sizeof buf);
-    for (uint32_t i = (off ? 0 : 4); i < sizeof buf; i += 2) sum += (buf[i] << 8) | buf[i + 1];
-  }
-  uint8_t fake[8]; memcpy(fake, head, 8);
-  RomInfo info = identifyRom(fake, 8);   // just for the name
-  char b[200];
-  if (sum != ck) {
-    snprintf(b, sizeof b, "Checksum doesn't match (header %08X, contents %08X) - the file looks damaged or isn't a Mac ROM.", (unsigned)ck, (unsigned)sum);
-    msg = b; return false;
-  }
-  if (ck != PLUS_V3_CHECKSUM) {
-    if (strcmp(info.name, "Unknown ROM") == 0)
-      snprintf(b, sizeof b, "That isn't a ROM Mac Mesh knows (checksum %08X). It needs the Mac Plus v3 ROM, checksum 4D1F8172.", (unsigned)ck);
+  auto sumOf = [&](uint32_t len) {
+    uint32_t sum = 0;
+    for (uint32_t off = 0; off < len; off += sizeof buf) {
+      romArea->read(ROM_AREA_PATCHED + off, buf, sizeof buf);
+      for (uint32_t i = (off ? 0 : 4); i < sizeof buf; i += 2) sum += (buf[i] << 8) | buf[i + 1];
+    }
+    return sum;
+  };
+  uint32_t romLen = 0;
+  if (upPos >= 0x10000 && ck == MAC128K_CHECKSUM && sumOf(0x10000) == ck) romLen = 0x10000;
+  else if (upPos >= MAC_ROM_SIZE && sumOf(MAC_ROM_SIZE) == ck) romLen = MAC_ROM_SIZE;
+  RomInfo info = identifyRom(head, 8);   // just for the name
+  if (!romLen) {
+    if (upPos < 0x10000 || (upPos < MAC_ROM_SIZE && ck != MAC128K_CHECKSUM))
+      snprintf(b, sizeof b, "That file is %u bytes. Mac Mesh takes the Mac Plus v3 ROM (128 KB) or the Mac 128K/512K ROM (64 KB).", (unsigned)upPos);
     else
-      snprintf(b, sizeof b, "That's a %s (%08X). Mac Mesh needs the Mac Plus v3 ROM, checksum 4D1F8172.", info.name, (unsigned)ck);
+      snprintf(b, sizeof b, "Checksum doesn't match (header %08X) - the file looks damaged or isn't a Mac ROM.", (unsigned)ck);
     msg = b; return false;
   }
-  // good: copy staging -> orig
+  if (ck != PLUS_V3_CHECKSUM && ck != MAC128K_CHECKSUM) {
+    if (strcmp(info.name, "Unknown ROM") == 0)
+      snprintf(b, sizeof b, "That isn't a ROM Mac Mesh knows (checksum %08X). It takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", (unsigned)ck);
+    else
+      snprintf(b, sizeof b, "That's a %s (%08X). Mac Mesh takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", info.name, (unsigned)ck);
+    msg = b; return false;
+  }
+  // good: copy staging -> orig (a 64 KB ROM is written twice)
   romArea->erase(ROM_AREA_ORIG, MAC_ROM_SIZE);
   for (uint32_t off = 0; off < MAC_ROM_SIZE; off += sizeof buf) {
-    romArea->read(ROM_AREA_PATCHED + off, buf, sizeof buf);
+    romArea->read(ROM_AREA_PATCHED + (off % romLen), buf, sizeof buf);
     romArea->write(ROM_AREA_ORIG + off, buf, sizeof buf);
   }
   m.romOk = 1; m.romChecksum = ck; m.patchedRam = 0; m.crashCount = 0;
   saveMeta();
-  msg = std::string("Mac Plus v3 ROM saved (") + info.name + ").";
-  if (upPos > MAC_ROM_SIZE) {
-    snprintf(b, sizeof b, " The file had %u extra bytes after the ROM; they were ignored.", (unsigned)(upPos - MAC_ROM_SIZE));
+  msg = std::string(info.name) + " saved.";
+  if (upPos > romLen) {
+    snprintf(b, sizeof b, " The file had %u extra bytes after the ROM; they were ignored.", (unsigned)(upPos - romLen));
     msg += b;
   }
   return true;

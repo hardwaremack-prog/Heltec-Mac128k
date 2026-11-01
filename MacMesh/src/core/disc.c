@@ -80,14 +80,17 @@ int     disc_pv_hook(uint8_t opcode)
 ////////////////////////////////////////////////////////////////////////////////
 // Basilisk II code follows
 
-#define WriteMacInt32(addr, val)        RAM_WR32(addr, val)
-#define WriteMacInt16(addr, val)        RAM_WR16(addr, val)
-#define WriteMacInt8(addr, val)         RAM_WR8(addr, val)
-#define ReadMacInt32(addr)              RAM_RD32(addr)
-#define ReadMacInt16(addr)              RAM_RD16(addr)
-#define ReadMacInt8(addr)               RAM_RD8(addr)
+/* MacMesh: every Mac address used here is kept inside RAM (wrapped like the
+ * real hardware), so a bad pointer from the Mac can't touch host memory. */
+#define MACRAM(addr)                    CLAMP_RAM_ADDR(ADR24(addr))
+#define WriteMacInt32(addr, val)        RAM_WR32(MACRAM(addr), val)
+#define WriteMacInt16(addr, val)        RAM_WR16(MACRAM(addr), val)
+#define WriteMacInt8(addr, val)         RAM_WR8(MACRAM(addr), val)
+#define ReadMacInt32(addr)              RAM_RD32(MACRAM(addr))
+#define ReadMacInt16(addr)              RAM_RD16(MACRAM(addr))
+#define ReadMacInt8(addr)               RAM_RD8(MACRAM(addr))
 
-#define Mac2HostAddr(addr)              (ram_get_base() + ADR24(addr))
+#define Mac2HostAddr(addr)              (ram_get_base() + MACRAM(addr))
 
 // These access host pointers, in BE/unaligned:
 #define WriteBEInt32(addr, val)         WRITE_LONG(((uint8_t *)(addr)), 0, val)
@@ -191,7 +194,8 @@ static int16_t set_dsk_err(int16_t err)
 static int is_drive_number_free(int num)
 {
         uint32_t e = ReadMacInt32(0x308 + qHead);
-        while (e) {
+        int guard = 64;   /* MacMesh: never loop forever on a damaged queue */
+        while (e && guard--) {
                 uint32_t d = e - dsQLink;
                 if ((int)ReadMacInt16(d + dsQDrive) == num)
                         return 0;
@@ -215,6 +219,21 @@ const int SonyRefNum = -5;                              // RefNum of driver
 int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status)
 {
 	DDBG("SonyOpen\n");
+#ifdef MACMESH_TRACE
+        fprintf(stderr, "SonyOpen: DrvQHdr flags %04x head %08x tail %08x, status %08x\n",
+                ReadMacInt16(0x308), ReadMacInt32(0x30a), ReadMacInt32(0x30e), status);
+#endif
+        /* MacMesh: the original 64 KB Mac 128K ROM leaves the drive queue header
+         * (DrvQHdr at 0x308) uninitialised and expects .Sony's Open to set it up.
+         * If it doesn't hold a sane queue, make it an empty one. */
+        {
+                uint32_t h = ReadMacInt32(0x308 + qHead);
+                if ((h & 1) || ADR24(h) >= RAM_SIZE || h > 0xffffff) {
+                        WriteMacInt16(0x308, 0);
+                        WriteMacInt32(0x308 + qHead, 0);
+                        WriteMacInt32(0x308 + qTail, 0);
+                }
+        }
 
 	// Set up DCE
 	WriteMacInt32(dce + dCtlPosition, 0);

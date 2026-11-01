@@ -228,7 +228,8 @@ static void setupWeb() {
 
   web.on("/api/status", HTTP_GET, [] {
     const MacMeta& m = mac.meta();
-    RomInfo ri = {m.romChecksum, true, "Mac Plus ROM v3", true};
+    uint8_t ck4[8] = {(uint8_t)(m.romChecksum >> 24), (uint8_t)(m.romChecksum >> 16), (uint8_t)(m.romChecksum >> 8), (uint8_t)m.romChecksum, 0, 0, 0, 0};
+    RomInfo ri = identifyRom(ck4, 8);
     String j = "{";
     j += "\"ip\":\"" + ipText() + "\",\"mode\":\"" + String(apMode ? "ap" : "sta") + "\",";
     j += "\"ssid\":\"" + jsonEsc(WiFi.SSID()) + "\",\"rssi\":" + String(WiFi.RSSI()) + ",";

@@ -48,7 +48,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 <div class="grid">
 <section><h2>Status</h2><dl id="st"></dl><p id="msg"></p></section>
 <section><h2>Mac ROM</h2>
- <p class="mute">Your own Mac Plus ROM, version 3 (128 KB, checksum 4D1F8172). It isn't included.</p>
+ <p class="mute">Your own ROM: the Mac Plus v3 ROM (128 KB, checksum 4D1F8172), or the original Mac 128K/512K ROM (64 KB, checksum 28BA61CE), which leaves more room for apps like MacPaint 1.x on this 128K Mac. ROMs aren't included.</p>
  <p id="romState"></p>
  <input type="file" id="romFile"> <button id="romUp" class="primary">Upload ROM</button>
 </section>
