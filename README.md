@@ -1,0 +1,140 @@
+# Mac Mesh
+
+A Macintosh Plus running on a **Heltec WiFi LoRa 32 V3** (the Meshtastic board). Use it in a
+**web browser with sound**, or over **VNC**.
+
+- Motorola 68000 + Mac Plus hardware, built on the umac emulator core (Matt Evans) and the
+  Musashi 68000 core (Karl Stenerud)
+- **Browser view** on port 80: live screen, sound, mouse, keyboard, paste, full screen. Works on
+  a PC, a Raspberry Pi, or a phone.
+- **VNC** on port 5900 (no password; Raw + Hextile). No sound over VNC.
+- **Your own ROM and disk**: upload a Mac Plus v3 ROM and a startup disk image from the web page.
+  They are stored in the board's flash.
+- OLED shows the board's address, or a tiny live view of the Mac screen
+
+![The web page](docs/web-page.png)
+*(The screenshot shows the built-in test pattern. With your ROM and disk you get the Mac desktop.)*
+
+> Flashing this replaces Meshtastic. To go back, reflash Meshtastic from flasher.meshtastic.org.
+
+## How much Mac fits
+
+The ESP32-S3 on the Heltec has about 512 KB of RAM in total, and Wi-Fi needs some of it. So this
+Mac has **128–256 KB** of RAM, not the Plus's usual 1 MB. The ROM is patched to accept that size.
+That's plenty for **System 2.0 – 3.2** (Finder 4.1 – 5.3) with MacPaint, MacWrite, MacDraw and
+early games. System 6 and 7 need more memory and won't boot.
+
+**Auto** RAM picks the biggest size that leaves room for Wi-Fi. If the board ever crashes from
+running out of memory, Auto drops one size on the next boot by itself.
+
+## 1. Flash it
+
+**Easiest (Chrome or Edge):** open `https://espressif.github.io/esptool-js/`, plug the board in
+with USB-C, click **Connect**, choose its port, set the address to **0x0**, pick
+`firmware/MacMesh-HeltecV3.bin` and click **Program**. Press the RST button when done.
+
+**Or with esptool:**
+```
+esptool --chip esp32s3 write-flash 0x0 firmware/MacMesh-HeltecV3.bin
+```
+If the board doesn't show up, hold **PRG**, tap **RST**, release **PRG**, then try again.
+
+Flashing an update later keeps your uploaded ROM and disk.
+
+## 2. Get it on Wi-Fi
+
+On first boot the board makes a hotspot called **MacMesh-Setup** (password **macmesh1**). Join it,
+browse to **http://192.168.4.1**, pick your network under *Wi-Fi*, and click **Save & restart**.
+The OLED then shows the board's address on your network (it also answers to `macmesh.local`).
+
+## 3. Give it a ROM and a disk
+
+On the web page:
+
+1. **Mac ROM**: upload your Mac Plus ROM. It must be **version 3** (128 KB, checksum
+   `4D1F8172`). The page checks the file and says what it is if it's a different ROM. No Apple
+   ROM is included.
+2. **Disk**: upload a startup disk image. Raw `.img`/`.dsk` files and **DiskCopy 4.2** images
+   both work (DiskCopy and MacBinary headers are removed automatically). The limit is about
+   5.6 MB, so 400K and 800K floppies fit easily. The page shows whether the disk is bootable.
+
+The board restarts after each upload and the Mac boots. **Download disk** saves the current disk
+(with your changes) back to your computer. **Write-protect** stops the Mac from changing it.
+
+## 4. Use it
+
+### In a browser (with sound)
+
+Open `http://<board-address>` and click the screen.
+
+- **Sound**: click **Sound: on**. Browsers only allow audio after a click.
+- **Mouse**: click and drag on the screen. Any mouse button is the Mac's one button.
+- **Keyboard**: Ctrl or the Windows key = **Command**, Alt = **Option**. Browsers keep Ctrl+W/T/N
+  for themselves, so use the **⌘ Command** button for those (it holds Command for the next key or
+  click).
+- **Phones**: tap **Keyboard** to bring up the on-screen keyboard. Paste or use *Type into the Mac*
+  for longer text.
+- **Full screen** fills the display with the Mac screen.
+
+Only one browser view at a time. A new one takes over from the old one.
+
+### Over VNC
+
+Point any VNC viewer (TigerVNC, RealVNC Viewer, TightVNC, Remmina) at `<board-address>:5900`. No
+password. Keys work the same as in the browser, and pasting into the viewer types the text on the
+Mac. (macOS Screen Sharing insists on a password, so use one of the others on a Mac.)
+
+| PC key | Mac key |
+|---|---|
+| Ctrl / Windows key | Command |
+| Alt / AltGr | Option |
+| Caps Lock | Caps Lock (locks) |
+| Backspace / Delete | Backspace |
+| Arrows, numeric keypad | Mac Plus arrows and keypad |
+
+## Board buttons and lights
+
+- **PRG** tap: switch the OLED between status and a mini view of the Mac screen
+- **PRG** hold 2 s: restart the Mac
+- White LED: on while someone is viewing
+
+## Settings
+
+- **Mac RAM**: Auto, 256, 208, 192, 160 or 128 KB (restarts the board)
+- **Turbo**: run as fast as the ESP32 can instead of at Mac Plus speed
+- **Restart Mac**: like pressing the reset switch
+
+## Limitations
+
+- One disk drive, no floppy swapping while running (upload a different image instead)
+- No SCSI, serial, printer or AppleTalk
+- Sound is the Mac Plus's main sound buffer at its normal rate, played in the browser. VNC has no
+  sound. The emulator isn't cycle-exact, so some timing-sensitive programs may sound or run a bit
+  differently.
+- Disk writes are cached and saved to flash after about a second of quiet. Use the Mac's
+  **Shut Down** or wait a moment before unplugging.
+
+## Build from source
+
+Arduino IDE with the **esp32** core 3.x, board **Heltec WiFi LoRa 32(V3)**. Open
+`MacMesh/MacMesh.ino`. The `partitions.csv` in the sketch folder sets up a 1.9 MB app, the ROM area
+and a ~5.6 MB disk area. No extra libraries are needed. The emulator core is in `MacMesh/src/core`.
+
+`host/` has a PC build of the same emulator, VNC and browser-view code for testing:
+```
+cd host && ./build.sh
+./machost --rom plus.rom --disk system.img   # web page http://localhost:8080, VNC localhost:5900
+./machost --testrom                          # built-in 68000 test pattern, no ROM needed
+python3 tests/viewers_test.py                # (with --testrom --ram 128) checks VNC + browser view
+./tests/keys_test                            # keyboard encoding (build: see top of the file)
+```
+
+## Licences
+
+Mac Mesh code: yours to use. It includes:
+- **umac** © 2024 Matt Evans, MIT licence (`licenses/umac-LICENSE.txt`), with Mac Mesh changes:
+  RAM size picked at runtime, sound output, absolute mouse, keyboard keypad prefix, no-disk handling.
+- **Musashi** 68000 core © 1998-2002 Karl Stenerud, MIT-style licence (`licenses/Musashi-LICENSE.txt`)
+- **SoftFloat** (used by Musashi) © John R. Hauser, see `licenses/SoftFloat-README.txt`
+
+Apple ROMs and system software are **not** included. Use your own.

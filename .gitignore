@@ -1,0 +1,7 @@
+build/
+host/obj/
+host/machost
+host/tests/keys_test
+host/flash-*.bin
+*.pbm
+host/page.png

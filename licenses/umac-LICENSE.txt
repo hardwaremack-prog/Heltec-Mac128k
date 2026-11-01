@@ -1,0 +1,25 @@
+ umac
+
+Micro Mac 128K emulator
+
+Main file with:
+- umac_ entry points,
+- main loop,
+- address decoding/memory map, dispatch to VIA/SCC/disc
+- Keyboard/mouse event dispatch
+
+Copyright 2024 Matt Evans
+
+Small portions of m68k interrupt code, error handling taken from
+Musashi, which is Copyright 1998-2002 Karl Stenerud.
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation files
+(the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software,
+and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
