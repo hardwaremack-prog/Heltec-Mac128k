@@ -122,6 +122,7 @@ One browser at a time can view the Mac. Opening it somewhere else takes over.
 | `.sit` (StuffIt 1.5 to 5, including "Arsenic" compression) | Unpacked in your browser; checksums verified |
 | `.hqx` (BinHex), `.bin` (MacBinary) | Decoded in your browser |
 | A loose program inside any of these | **Add to the disk in use** copies it onto that disk |
+| An 800K HFS disk with no System on it (a game or app disk) | Its programs are pulled out and offered for **Add to the disk in use** |
 
 - **Download** saves a disk, with everything you've changed, back to your computer.
 - **Remove** deletes a disk and gives its space back. The disks after it slide down in flash,
@@ -131,7 +132,8 @@ One browser at a time can view the Mac. Opening it somewhere else takes over.
 **What runs well:** the original 400K disks from 1984 to 1986. That means System 1.x to 3.x,
 MacPaint, MacWrite, the Guided Tour and early games. Each original app disk carries its own
 System, so it starts straight into the app. Disks for System 4 and later (800K HFS) need a Mac
-with 512 KB or more, which doesn't fit on this board.
+with 512 KB or more, which doesn't fit on this board. Many small 800K game disks are just one
+program, though, and those usually run fine once copied onto a 400K System disk.
 
 ### Clock
 

@@ -329,6 +329,10 @@ int main(int argc, char** argv) {
     if (c >= 0) web.attach(new SockConn(c));
     vnc.poll();
     web.poll();
+    if (getenv("DUMPRAM") && access(getenv("DUMPRAM"), F_OK) == 0 && _ram_base) {   // test hook: dump Mac RAM
+      std::string out = std::string(getenv("DUMPRAM")) + ".ram"; FILE* f = fopen(out.c_str(), "wb");
+      fwrite(_ram_base, 1, mac.ramBytes(), f); fclose(f); unlink(getenv("DUMPRAM"));
+    }
     if (now() - lastT > 5000000) {
       uint32_t l = mac.loops;
       if (getenv("CLOCKCHECK") && _ram_base) {

@@ -512,7 +512,7 @@ const MacFiles = (() => {
       const name = macRoman(d, p, nameLen); p += nameLen;
       if (p < offs + hsize) { const cl = be16(d, p); p += 4 + cl; }
       const something = be16(d, p); p += 4;
-      const type = macRoman(d, p, 4), creator = macRoman(d, p + 4, 4); p += 10;
+      const type = macRoman(d, p, 4), creator = macRoman(d, p + 4, 4), fflags = be16(d, p + 8); p += 10;
       p += ver === 1 ? 22 : 18;
       let rsrcLen = 0, rsrcComp = 0, rsrcMethod = 0;
       if (something & 1) {
@@ -525,7 +525,7 @@ const MacFiles = (() => {
       if (eflags & 0x40) { dirs[offs] = full; todo += nFiles; continue; }
       const rsrcPacked = d.subarray(p, p + rsrcComp), dataPacked = d.subarray(p + rsrcComp, p + rsrcComp + dataComp);
       p += rsrcComp + dataComp;
-      out.push({ name: full, size: dataLen, type, creator, rsrcSize: rsrcLen, methods: [dataMethod, rsrcMethod], finderFlags: be16(d, p - (ver === 1 ? 22 : 18) - 2),
+      out.push({ name: full, size: dataLen, type, creator, rsrcSize: rsrcLen, methods: [dataMethod, rsrcMethod], finderFlags: fflags,
         data: async () => { const r = sitDecode(dataMethod, dataPacked, dataLen); if (dataLen && dataMethod !== 15 && (dataMethod & 15) && crc16(r) !== dataCrc) throw new Error(full + ': checksum mismatch, the archive may be damaged'); return r; },
         rsrc: async () => sitDecode(rsrcMethod, rsrcPacked, rsrcLen) });
     }
@@ -576,14 +576,33 @@ const MacFiles = (() => {
     const d = new Uint8Array(disk), V = 1024;
     if (be16(d, V) !== 0xD2D7) throw new Error(be16(d, V) === 0x4244 ? 'Programs can only be added to 400K MFS disks (System 1-3 era), not HFS disks' : 'That disk isn\'t a Mac MFS disk');
     const w16 = (o, v) => { d[o] = v >> 8; d[o + 1] = v; }, w32 = (o, v) => { w16(o, v >>> 16); w16(o + 2, v & 0xFFFF); };
-    const nFiles = be16(d, V + 12), dirSt = be16(d, V + 14), dirLen = be16(d, V + 16);
-    const nBlks = be16(d, V + 18), blkSize = be32(d, V + 20), alSt = be16(d, V + 28);
-    const nextNum = be32(d, V + 30), free = be16(d, V + 34);
     // allocation map: 12-bit entries for blocks 2..nBlks+1, right after the 64-byte volume info
     const MAP = V + 64;
     const getMap = n => { const i = n - 2, o = MAP + ((i * 3) >> 1); return i & 1 ? ((d[o] & 15) << 8) | d[o + 1] : (d[o] << 4) | (d[o + 1] >> 4); };
     const setMap = (n, v) => { const i = n - 2, o = MAP + ((i * 3) >> 1);
       if (i & 1) { d[o] = (d[o] & 0xF0) | (v >> 8); d[o + 1] = v & 255; } else { d[o] = v >> 4; d[o + 1] = (d[o + 1] & 15) | ((v & 15) << 4); } };
+    // the same program added before (same name, type and creator) is replaced, not duplicated
+    {
+      const dirSt = be16(d, V + 14), dirLen = be16(d, V + 16), nBlks = be16(d, V + 18), want = file.name.slice(0, 63).toLowerCase();
+      for (let b = 0; b < dirLen; b++) {
+        let p = (dirSt + b) * 512; const end = p + 512;
+        while (p < end && d[p] & 0x80) {
+          const nl = d[p + 50], len = (51 + nl + 1) & ~1;
+          if (macRoman(d, p + 51, nl).toLowerCase() === want && macRoman(d, p + 2, 4) === (file.type || '????') && macRoman(d, p + 6, 4) === (file.creator || '????')) {
+            let freed = 0;
+            for (const st of [be16(d, p + 22), be16(d, p + 32)])
+              for (let k = st, g = 0; k >= 2 && k < nBlks + 2 && g < nBlks; g++) { const nx = getMap(k); setMap(k, 0); freed++; if (nx === 1 || nx === 0) break; k = nx; }
+            d.copyWithin(p, p + len, end); d.fill(0, end - len, end);
+            w16(V + 12, be16(d, V + 12) - 1); w16(V + 34, be16(d, V + 34) + freed);
+            continue;
+          }
+          p += len;
+        }
+      }
+    }
+    const nFiles = be16(d, V + 12), dirSt = be16(d, V + 14), dirLen = be16(d, V + 16);
+    const nBlks = be16(d, V + 18), blkSize = be32(d, V + 20), alSt = be16(d, V + 28);
+    const nextNum = be32(d, V + 30), free = be16(d, V + 34);
     const need = len => Math.ceil(len / blkSize);
     const nData = need(file.data.length), nRsrc = need(file.rsrc.length);
     if (nData + nRsrc > free) throw new Error('Not enough free space on that disk (' + Math.round(free * blkSize / 1024) + ' KB free, ' + file.name + ' needs ' + Math.round((nData + nRsrc) * blkSize / 1024) + ' KB)');
@@ -613,7 +632,7 @@ const MacFiles = (() => {
     d.fill(0, p, p + 51 + name.length + 1);
     d[p] = 0x80; d[p + 1] = 0;
     for (let i = 0; i < 4; i++) { d[p + 2 + i] = (file.type || '????').charCodeAt(i); d[p + 6 + i] = (file.creator || '????').charCodeAt(i); }
-    w16(p + 10, (file.finderFlags || 0) & ~0x0100);   // not yet "inited": the Finder places the icon
+    w16(p + 10, (file.finderFlags || 0) & ~0x4103);   // visible, not "inited" (the Finder places the icon), not on the desktop
     w32(p + 18, nextNum);
     w16(p + 22, dStart); w32(p + 24, file.data.length); w32(p + 28, nData * blkSize);
     w16(p + 32, rStart); w32(p + 34, file.rsrc.length); w32(p + 38, nRsrc * blkSize);
@@ -624,16 +643,79 @@ const MacFiles = (() => {
     return { disk: d, name };
   }
 
+
+  // ------------------------------------------------------------ HFS reader
+  // Lists the files on an HFS disk (800K-era). Only needs the catalog B-tree; files whose
+  // forks spill into the extents-overflow file (very fragmented ones) are skipped with a note.
+  function hfsFiles(raw, notes) {
+    const V = 1024;
+    if (be16(raw, V) !== 0x4244) return [];
+    const blkSize = be32(raw, V + 20), alSt = be16(raw, V + 28) * 512;
+    const readExt = (ext, len) => {   // ext: [[start,count] x3]
+      const out = new Uint8Array(len); let got = 0;
+      for (const [st, n] of ext) {
+        if (got >= len || !n) break;
+        const o = alSt + st * blkSize, take = Math.min(n * blkSize, len - got);
+        if (o + take > raw.length) return null;
+        out.set(raw.subarray(o, o + take), got); got += take;
+      }
+      return got >= len ? out : null;
+    };
+    const extAt = (o, b = raw) => [0, 4, 8].map(i => [be16(b, o + i), be16(b, o + i + 2)]);
+    const cat = readExt(extAt(V + 150), be32(raw, V + 146));
+    if (!cat) { notes.push('The disk\'s catalog is damaged or fragmented'); return []; }
+    const nodeSize = be16(cat, 14 + 18) || 512;
+    const dirs = { 1: '', 2: '' }, recs = [];
+    let node = be32(cat, 14 + 10), guard = 0;   // first leaf node, then follow the links
+    while (node && guard++ < 10000) {
+      const b = node * nodeSize; if (b + nodeSize > cat.length) break;
+      const n = be16(cat, b + 10);
+      for (let i = 0; i < n; i++) {
+        const r = b + be16(cat, b + nodeSize - 2 * (i + 1));
+        const kl = cat[r], parent = be32(cat, r + 2), name = macRoman(cat, r + 7, cat[r + 6]);
+        let p = r + 1 + kl; if (p & 1) p++;
+        const t = cat[p];
+        if (t === 1) dirs[be32(cat, p + 6)] = { parent, name };
+        else if (t === 2) recs.push({ parent, name, p });
+      }
+      node = be32(cat, b);
+    }
+    const pathOf = id => { const parts = []; let g = 0;
+      while (dirs[id] && typeof dirs[id] === 'object' && g++ < 64) { parts.unshift(dirs[id].name); id = dirs[id].parent; }
+      parts.shift(); return parts; };   // drop the volume name (the root folder)
+    const files = [];
+    for (const { parent, name, p } of recs) {
+      const type = macRoman(cat, p + 4, 4), creator = macRoman(cat, p + 8, 4), finderFlags = be16(cat, p + 12);
+      const dl = be32(cat, p + 26), rl = be32(cat, p + 36);
+      const data = readExt(extAt(p + 74, cat), dl), rsrc = readExt(extAt(p + 86, cat), rl);
+      const path = [...pathOf(parent), name].join('/');
+      if (!data || !rsrc) { notes.push(path + ' is too fragmented on the disk to copy'); continue; }
+      files.push({ name, path, type, creator, finderFlags, data, rsrc });
+    }
+    return files;
+  }
+
+  // An 800K HFS disk with no System can't be used directly (the 128K ROM can't read HFS, and there's
+  // only one drive), so its programs are offered for copying onto the 400K disk in use instead.
+  function addDisk(name, disk, result) {
+    const info = diskInfo(disk.raw);
+    if (info.fs === 'HFS' && !info.bootable) {
+      const files = hfsFiles(disk.raw, result.notes).filter(f => !/^(System|Finder|Desktop.*|Clipboard File|Scrapbook File|Note Pad File)$/i.test(f.name) && f.type !== 'ZSYS' && f.type !== 'FNDR');
+      if (files.length) {
+        result.notes.push(name + ' is an 800K HFS disk without a System, so its contents can be copied onto a 400K disk instead.');
+        result.files.push(...files); return;
+      }
+    }
+    result.disks.push({ name, raw: disk.raw, how: disk.how, info });
+  }
+
   // ------------------------------------------------------------ the main entry point
   // Opens a file and everything nested inside it. Returns {disks:[{name, raw, how, info}], other:[names], notes:[]}
   async function open(name, data, depth = 0, result = { disks: [], other: [], notes: [], files: [] }) {
     if (depth > 6) return result;
     const n = lower(name);
     const disk = asDisk(data, name);
-    if (disk && !/\.(zip|7z|sit|hqx|bin|gz)$/i.test(n)) {
-      result.disks.push({ name, raw: disk.raw, how: disk.how, info: diskInfo(disk.raw) });
-      return result;
-    }
+    if (disk && !/\.(zip|7z|sit|hqx|bin|gz)$/i.test(n)) { addDisk(name, disk, result); return result; }
     let kids = null;
     try {
       if (data[0] === 0x50 && data[1] === 0x4B && data[2] === 3 && data[3] === 4) kids = await unzip(data);
@@ -646,7 +728,7 @@ const MacFiles = (() => {
       else if (macRoman(data, 0, 7) === 'StuffIt') throw new Error('StuffIt X (.sitx) archives aren\'t supported. Try a DiskCopy or .img version.');
     } catch (e) { result.notes.push(name + ': ' + e.message); return result; }
     if (!kids) {
-      if (disk) result.disks.push({ name, raw: disk.raw, how: disk.how, info: diskInfo(disk.raw) });
+      if (disk) addDisk(name, disk, result);
       else result.other.push(name);
       return result;
     }
@@ -664,6 +746,6 @@ const MacFiles = (() => {
     return result;
   }
 
-  return { open, diskInfo, addToMFS, _test: { lzma, lzma2, sit13, unsit, unsit5, unzip, un7z, unhqx, crc16 } };
+  return { open, diskInfo, addToMFS, hfsFiles, _test: { lzma, lzma2, sit13, unsit, unsit5, unzip, un7z, unhqx, crc16 } };
 })();
 if (typeof module !== 'undefined') module.exports = MacFiles;
