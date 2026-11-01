@@ -17,6 +17,7 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
+#include <time.h>
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -325,11 +326,11 @@ static void setupWeb() {
   web.on("/api/libdel", HTTP_POST, [] {
     int i = web.arg("i").toInt();
     bool wasActive = i == mac.meta().active;
-    if (wasActive) pauseEmu();
+    pauseEmu();                       // other disks may slide down in flash
     bool ok = mac.removeDisk(i);
     refreshDiskInfo();
     web.send(ok ? 200 : 400, "text/plain", ok ? "ok" : "No such disk");
-    if (wasActive) restartAt = millis() + 500;
+    if (wasActive) restartAt = millis() + 500; else resumeEmu();
   });
 
   // ---- disk download (the Mac pauses while it streams)
@@ -385,7 +386,17 @@ static void netTask(void*) {
   uint32_t lastOled = 0, lastSpeed = millis(), lastLoops = mac.loops;
   uint32_t btnDown = 0;
   bool btnHeld = false, cleanMarked = false;
+  uint32_t lastNtp = 0;
   for (;;) {
+    // internet time: once it arrives, and every 6 hours (only if we know your time zone)
+    if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
+      time_t utc = time(nullptr);
+      if (utc > 1700000000) {
+        mac.setClock((uint32_t)(utc + 2082844800LL + mac.timezoneMin() * 60), mac.timezoneMin(), false);
+        lastNtp = millis() ? millis() : 1;
+        Serial.println("Clock set from internet time");
+      }
+    }
     if (!cleanMarked && millis() > 60000) { cleanMarked = true; mac.bootWasClean(); }
     web.handleClient();
     WiFiClient nc = vncListener.accept();
@@ -472,6 +483,9 @@ void setup() {
   webView.onAudio = [](bool on) { mac.audioWanted = on; };
   webView.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
   webView.audioPending = [] { return mac.audioQueued(); };
+  webView.onClock = [](uint32_t t, int tz) { mac.setClock(t, tz, true); Serial.printf("Clock set from the browser (UTC%+d min)\n", tz); };
+  // Internet time as a fallback when no browser is open (uses the time zone the browser last told us)
+  if (!apMode) configTime(0, 0, "pool.ntp.org", "time.google.com");
 
   vncListener.begin(); vncListener.setNoDelay(true);
   wsListener.begin(); wsListener.setNoDelay(true);

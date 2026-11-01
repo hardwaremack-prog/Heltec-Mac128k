@@ -102,7 +102,7 @@ async function post(u,body){const r=await fetch(u,{method:'POST',body});const t=
 // ---------- screen over WebSocket
 function connect(){
  ws=new WebSocket('ws://'+location.hostname+':81/');ws.binaryType='arraybuffer';
- ws.onopen=()=>{wsOk=true;$('dot').style.background='#4c4';send([0x46]);if(audio.on)send([0x61,1])};
+ ws.onopen=()=>{wsOk=true;$('dot').style.background='#4c4';send([0x46]);if(audio.on)send([0x61,1]);sendClock()};
  ws.onclose=()=>{wsOk=false;$('dot').style.background='#c44';setTimeout(connect,1500)};
  ws.onmessage=e=>{const d=new Uint8Array(e.data);
   if(d[0]==0x54){const n=(d[1]<<8)|d[2];let p=3,minY=1e9,maxY=-1;
@@ -113,13 +113,16 @@ function connect(){
    cx.putImageData(img,0,0,0,minY,W,Math.min(H,maxY)-minY);send([0x41])}
   else if(d[0]==0x53)audio.bundle(d)}}
 function send(a){if(wsOk&&ws.readyState==1)ws.send(new Uint8Array(a))}
+// Set the Mac's clock to this computer's local time (Mac time counts seconds from 1 Jan 1904)
+function sendClock(){const d=new Date(),tz=-d.getTimezoneOffset(),t=Math.floor(d.getTime()/1000)+tz*60+2082844800;
+ send([0x43,(t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255,(tz>>8)&255,tz&255])}
 connect();
 
 // ---------- sound: Mac Plus = 370 samples per frame (~22.2 kHz), 8-bit unsigned
 const audio={on:false,ctx:null,node:null,
  // AudioWorklet only exists on secure (https/localhost) pages; the board serves plain http, so
  // there we play through a ScriptProcessorNode fed from this ring buffer instead.
- rb:new Float32Array(48000),r:0,w:0,n:0,
+ rb:new Float32Array(48000),r:0,w:0,n:0,target:0,playing:false,fade:0,
  async start(){
   if(!this.ctx){this.ctx=new (window.AudioContext||window.webkitAudioContext)();this.pos=0;
    if(this.ctx.audioWorklet&&window.isSecureContext){
@@ -131,8 +134,20 @@ const audio={on:false,ctx:null,node:null,
     await this.ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
     this.node=new AudioWorkletNode(this.ctx,'macsnd');this.worklet=true}
    else{const sp=this.ctx.createScriptProcessor(2048,0,1);
-    sp.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0),b=this.rb,L=b.length;
-     for(let k=0;k<out.length;k++){if(this.n>0){out[k]=b[this.r];this.r=(this.r+1)%L;this.n--}else out[k]=0}};
+    // Jitter buffer: wait until `target` samples are queued before playing. If Wi-Fi delivers
+    // late and it runs dry mid-sound, pause cleanly and grow the cushion (0.1 s at first, up to 0.4 s) instead
+    // of crackling; if it builds up, play 2% faster until it's back down.
+    sp.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0),b=this.rb,L=b.length,rate=this.ctx.sampleRate;
+     if(!this.target)this.target=Math.round(rate*0.1);
+     if(!this.playing&&this.n>=this.target){this.playing=true;this.fade=0}
+     for(let k=0;k<out.length;k++){
+      if(this.playing&&this.n>0){let v=b[this.r];this.r=(this.r+1)%L;this.n--;
+       if(k%50==0&&this.n>this.target*2+rate*0.1){this.r=(this.r+1)%L;this.n--}
+       if(this.fade<128){v*=this.fade/128;this.fade++}
+       out[k]=v}
+      else{if(this.playing){this.playing=false;
+        if(performance.now()-(this.last||0)<120)this.target=Math.min(this.target+Math.round(rate*0.06),Math.round(rate*0.4))}
+       out[k]=0}}};
     this.node=sp;this.worklet=false}
    this.node.connect(this.ctx.destination)}
   await this.ctx.resume();this.on=true;send([0x61,1])},
@@ -143,7 +158,7 @@ const audio={on:false,ctx:null,node:null,
  // A bundle: 'S' n, then n frames of {vol, 370 samples} (vol 0xFF = silent frame, no samples).
  // After a gap (silence isn't sent), start with ~80 ms of quiet so Wi-Fi hiccups don't cut the sound.
  bundle(d){if(!this.node)return;const rate=this.ctx.sampleRate,step=22200/rate,now=performance.now();
-  if(now-(this.last||0)>150){this.pos=0;this.push(new Float32Array(Math.round(rate*0.08)))}
+  if(now-(this.last||0)>150){this.pos=0;if(this.worklet)this.push(new Float32Array(Math.round(rate*0.08)))}
   this.last=now;let p=2;
   for(let f=0;f<d[1];f++){const v=d[p++],silent=v==0xFF,vol=silent?0:v/7*0.6,s0=p;if(!silent)p+=370;
    const n=Math.floor((370-this.pos)/step),o=new Float32Array(Math.max(n,0));
@@ -245,7 +260,8 @@ function renderLib(s){const L=s.lib||[];
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
  if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');setTimeout(()=>location.reload(),6000)}
  if(d!==undefined){const row=e.target.closest('.disk');if(e.target.textContent!='Sure?'){e.target.textContent='Sure?';setTimeout(()=>{e.target.textContent='Remove'},3000);return}
-  await post('/api/libdel?i='+d);msg('Removed.');status()}};
+  msg('Removing... the board moves your other disks down to free the space, so this can take a few seconds.');
+  try{await post('/api/libdel?i='+d);msg('Removed. The space is free again.')}catch(err){msg(err.message,1)}status()}};
 function diskLabel(d){const i=d.info;return esc(d.name.split('/').pop())+' &middot; '+Math.round(i.size/1024)+' KB'+(i.fs?' '+i.fs:'')+(i.vol?' &ldquo;'+esc(i.vol)+'&rdquo;':'')+(i.bootable?'':' &middot; not a startup disk')}
 function diskWarning(d){const i=d.info;
  if(i.fs=='HFS'&&lastStatus.ram&&lastStatus.ram<512*1024)return ' Note: HFS disks are usually System 4 or later, which needs 512 KB; this Mac has '+kb(lastStatus.ram)+', so it may stop with an out-of-memory error.';

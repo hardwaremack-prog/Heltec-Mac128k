@@ -40,14 +40,22 @@ int     umac_kbd_ready(void);
 void    umac_mouse_abs(int x, int y, int button);
 int     umac_crashed(void);
 int     umac_sound_frame(uint8_t samples[370], int *volume);
+/* Real-time clock chip: Mac time = seconds since 1 Jan 1904, local time */
+void     umac_rtc_set(uint32_t mac_seconds);
+uint32_t umac_rtc_get(void);
+uint8_t *umac_rtc_pram(void);            /* 20 bytes of parameter RAM */
+int      umac_rtc_pram_dirty(void);      /* 1 if PRAM changed since the last call */
+void     umac_set_time_now(uint32_t mac_seconds);
 
 static inline void      umac_vsync_event(void)
 {
         via_caX_event(2);
 }
 
+void     umac_rtc_tick(void);
 static inline void      umac_1hz_event(void)
 {
+        umac_rtc_tick();
         via_caX_event(1);
 }
 

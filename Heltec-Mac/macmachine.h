@@ -38,7 +38,12 @@ struct MacMeta {
   uint32_t autoCapKB;    // after a crash in Auto mode: don't go above this
   uint32_t lastRamKB;    // RAM size used by the last boot
   uint32_t crashCount;   // boots in a row that ended in a crash (safe mode at 3)
-  uint32_t reserved[13];
+  // clock chip: parameter RAM (Control Panel settings) and the last known time
+  uint8_t pram[20];
+  int32_t tzMin;         // your computer's offset from UTC, minutes (from the browser)
+  uint32_t lastTime;     // Mac time when last set/saved
+  uint32_t clockFlags;   // bit 0: pram valid, bit 1: tzMin known
+  uint32_t reserved[5];
   // disk library (several disks kept in the disk area; one is in use)
   uint32_t libMagic;     // 'LIB1' once set up
   int32_t active;        // library index of the disk in use, -1 = none
@@ -71,6 +76,13 @@ class MacMachine {
   // Call at boot if the last run crashed (e.g. ran out of memory): Auto mode then uses a smaller Mac
   void lastBootCrashed();
   void bootWasClean() { if (m.crashCount) { m.crashCount = 0; saveMeta(); } }
+  // Clock: set from the browser (your computer's local time) or from the internet (UTC + saved offset).
+  // Thread-safe: applied on the emulator thread at the next step.
+  void setClock(uint32_t macSeconds, int tzMin, bool fromBrowser);
+  bool timezoneKnown() const { return m.clockFlags & 2; }
+  int timezoneMin() const { return m.tzMin; }
+  volatile uint32_t pendingTime = 0;
+  volatile bool clockSet = false;
   void setRamSettingClear(uint32_t kb) { m.ramSetting = kb; m.autoCapKB = 0; m.crashCount = 0; saveMeta(); }
 #ifdef MACMESH_HOST
   // PC test build only: run an unpatched test ROM image with the given RAM size
@@ -115,7 +127,8 @@ class MacMachine {
   void ejectDisk();                                   // removes the disk in use from the library
   bool removeDisk(int i);
   bool useDisk(int i);                                // takes effect when the Mac starts
-  uint32_t libraryFree() const;                       // bytes in the biggest free gap
+  uint32_t libraryFree() const;                       // free bytes (kept in one piece by compacting)
+  void compactLibrary();                              // slides disks down over the gaps
   int lastUploadIndex = -1;
   std::string uploadMsg;
   void stop();                                        // release RAM + ROM mapping (before uploads)
@@ -139,6 +152,7 @@ class MacMachine {
   int32_t secIdx = -1;
   bool secDirty = false;
   bool loadSector(int32_t idx);
+  int64_t lastPramCheck = 0, lastTimeSave = 0;
   uint32_t diskBase = 0;                              // where the disk in use starts in the disk area
   void freeGap(uint32_t& start, uint32_t& len, int ignore = -1) const;
   int upReplace = -1; bool upActivate = true; uint32_t upBase = 0, upLimit = 0;

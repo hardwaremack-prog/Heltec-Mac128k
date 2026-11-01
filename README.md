@@ -124,6 +124,14 @@ Mac. (macOS Screen Sharing insists on a password, so use one of the others on a 
 | Backspace / Delete | Backspace |
 | Arrows, numeric keypad | Mac Plus arrows and keypad |
 
+## Clock
+
+The Mac's clock follows your computer. Each time you open the page, the browser sends your
+computer's local time and the Mac's clock (menu-bar clocks, Alarm Clock, Control Panel, file
+dates) is set to it. When no browser is open, the board keeps time from the internet using the
+time zone your browser last reported, so it's right even after a restart. Control Panel settings
+such as volume, key repeat and mouse speed are saved on the board too.
+
 ## Board buttons and lights
 
 - **PRG** tap: switch the OLED between status and a mini view of the Mac screen
@@ -147,6 +155,7 @@ Mac. (macOS Screen Sharing insists on a password, so use one of the others on a 
 ## Limitations
 
 - One disk drive: to switch disks, pick another one in the library (the Mac restarts)
+- Removing a disk slides the later disks down to give the space back, which can take a few seconds
 - No SCSI, serial, printer or AppleTalk
 - Sound is the Mac Plus's main sound buffer at its normal rate, played in the browser. VNC has no
   sound. The emulator isn't cycle-exact, so some timing-sensitive programs may sound or run a bit

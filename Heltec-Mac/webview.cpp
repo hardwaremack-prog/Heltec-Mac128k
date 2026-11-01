@@ -167,6 +167,9 @@ void WebView::handleMessage(const uint8_t* p, size_t n) {
     case 'K':
       if (n >= 6 && onKey) onKey(((uint32_t)p[2] << 24) | (p[3] << 16) | (p[4] << 8) | p[5], p[1] != 0);
       break;
+    case 'C':
+      if (n >= 7 && onClock) onClock(((uint32_t)p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4], (int16_t)((p[5] << 8) | p[6]));
+      break;
     case 'a':
       audioOn = n >= 2 && p[1];
       if (onAudio) onAudio(audioOn);

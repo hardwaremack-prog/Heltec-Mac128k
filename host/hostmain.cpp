@@ -24,6 +24,14 @@
 #include "../Heltec-Mac/webview.h"
 extern "C" {
 #include "../Heltec-Mac/src/core/m68k.h"
+#include "../Heltec-Mac/src/core/umac.h"
+extern uint8_t* _ram_base;
+}
+#include <ctime>
+// This computer's local time as Mac time (seconds since 1 Jan 1904, local)
+static uint32_t macNow() {
+  time_t t = time(nullptr); struct tm lt; localtime_r(&t, &lt);
+  return (uint32_t)(t + lt.tm_gmtoff + 2082844800LL);
 }
 #define PROGMEM
 #include "../Heltec-Mac/webui.h"
@@ -150,7 +158,7 @@ static std::vector<uint8_t> testRom(uint32_t ramBytes, bool sound) {
 int main(int argc, char** argv) {
   std::string romFile, dump;
   std::vector<std::string> diskFiles;
-  int useIdx = -1;
+  int useIdx = -1, removeIdx = -1;
   int frames = 0, ramKB = 0;
   bool test = false, fresh = false, sound = false;
   for (int i = 1; i < argc; i++) {
@@ -158,6 +166,7 @@ int main(int argc, char** argv) {
     if (a == "--rom" && i + 1 < argc) romFile = argv[++i];
     else if (a == "--disk" && i + 1 < argc) diskFiles.push_back(argv[++i]);
     else if (a == "--use" && i + 1 < argc) useIdx = atoi(argv[++i]);
+    else if (a == "--remove" && i + 1 < argc) removeIdx = atoi(argv[++i]);
     else if (a == "--frames" && i + 1 < argc) frames = atoi(argv[++i]);
     else if (a == "--dump" && i + 1 < argc) dump = argv[++i];
     else if (a == "--ram" && i + 1 < argc) ramKB = atoi(argv[++i]);
@@ -190,10 +199,14 @@ int main(int argc, char** argv) {
     printf("Disk: %s %s (library slot %d)\n", ok ? "OK" : "REJECTED", msg.c_str(), mac.lastUploadIndex);
   }
   if (useIdx >= 0) printf("Use disk %d: %s\n", useIdx, mac.useDisk(useIdx) ? "OK" : "no such disk");
+  if (removeIdx >= 0) printf("Remove disk %d: %s\n", removeIdx, mac.removeDisk(removeIdx) ? "OK" : "no such disk");
   {
     const MacMeta& mm = mac.meta();
     for (int i = 0; i < LIB_MAX; i++) if (mm.lib[i].size) printf("  library %d%s: %s  %u bytes at %u\n", i, i == mm.active ? " (in use)" : "", mm.lib[i].name, mm.lib[i].size, mm.lib[i].off);
     printf("  free: %u KB\n", mac.libraryFree() / 1024);
+    if (getenv("DUMPLIB")) for (int i = 0; i < LIB_MAX; i++) if (mm.lib[i].size) {
+      char p[64]; snprintf(p, sizeof p, "lib%d.raw", i); FILE* f = fopen(p, "wb");
+      fwrite(diskArea.d.data() + mm.lib[i].off, 1, mm.lib[i].size, f); fclose(f); }
   }
 
   std::vector<uint8_t> trom;
@@ -206,6 +219,7 @@ int main(int argc, char** argv) {
     // pretend we're an ESP32-S3 with ~360 KB free before Wi-Fi
     if (!mac.start(getenv("HEAP_KB") ? atoi(getenv("HEAP_KB")) * 1024 : 16 << 20, getenv("HEAP_KB") ? atoi(getenv("HEAP_KB")) * 1024 : 16 << 20, 56 * 1024, msg)) { printf("Can't start: %s\n", msg.c_str()); }
     else printf("Mac started with %u KB RAM\n", mac.ramBytes() / 1024);
+    umac_rtc_set(macNow());
   }
 
   VncServer vnc;
@@ -219,6 +233,7 @@ int main(int argc, char** argv) {
   web.onAudio = [](bool on) { mac.audioWanted = on; };
   web.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
   web.audioPending = [] { return mac.audioQueued(); };
+  web.onClock = [](uint32_t t, int tz) { mac.setClock(t, tz, true); printf("Clock set from the browser (UTC%+d min)\n", tz); };
 
   auto t0 = std::chrono::steady_clock::now();
   auto now = [&] { return (int64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count(); };
@@ -236,6 +251,11 @@ int main(int argc, char** argv) {
       if (s > 0) usleep(s);
     }
     if (mac.crashed()) printf("Mac stopped (emulator error)\n");
+    if (getenv("CLOCKCHECK") && _ram_base) {
+      uint32_t t = (_ram_base[0x20c] << 24) | (_ram_base[0x20d] << 16) | (_ram_base[0x20e] << 8) | _ram_base[0x20f];
+      time_t u = (time_t)t - 2082844800LL; struct tm g; gmtime_r(&u, &g); char b[64]; strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", &g);
+      printf("Mac clock (Time global): %s   clock chip: %u   PC local: %u\n", b, umac_rtc_get(), macNow());
+    }
     printf("Ran %u frames, %u slices\n", (unsigned)mac.frameCount, (unsigned)mac.loops);
     if (!dump.empty()) dumpPBM(dump.c_str());
     mac.flushDisk();
@@ -289,6 +309,11 @@ int main(int argc, char** argv) {
     web.poll();
     if (now() - lastT > 5000000) {
       uint32_t l = mac.loops;
+      if (getenv("CLOCKCHECK") && _ram_base) {
+        uint32_t t = (_ram_base[0x20c] << 24) | (_ram_base[0x20d] << 16) | (_ram_base[0x20e] << 8) | _ram_base[0x20f];
+        time_t u = (time_t)t - 2082844800LL; struct tm g; gmtime_r(&u, &g); char b[64]; strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", &g);
+        printf("Mac clock: %s\n", b); fflush(stdout);
+      }
       printf("speed %d%%  vnc:%d web:%d\n", (int)((l - lastLoops) * 5000.0 * 100 / (now() - lastT)), vnc.active(), web.active());
       lastLoops = l; lastT = now();
       romArea.save(); diskArea.save();

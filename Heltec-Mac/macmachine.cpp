@@ -236,8 +236,21 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   discs[0].op_read = cbRead;
   discs[0].op_write = cbWrite;
   umac_init(ram, (void*)rom, discs);
+  if (m.clockFlags & 1) memcpy(umac_rtc_pram(), m.pram, 20);
+  umac_rtc_pram_dirty();
+  if (!clockSet && m.lastTime) umac_rtc_set(m.lastTime);   // a guess until the browser or internet says
   timeInit = false;
   return true;
+}
+
+void MacMachine::setClock(uint32_t macSeconds, int tzMin, bool fromBrowser) {
+  pendingTime = macSeconds;
+  bool tzChanged = fromBrowser && (!(m.clockFlags & 2) || m.tzMin != tzMin);
+  if (fromBrowser) { m.tzMin = tzMin; m.clockFlags |= 2; }
+  if (tzChanged || !m.lastTime || (int64_t)macSeconds - (int64_t)m.lastTime > 6 * 3600 || (int64_t)macSeconds < (int64_t)m.lastTime - 60) {
+    m.lastTime = macSeconds; saveMeta();
+  }
+  clockSet = true;
 }
 
 #ifdef MACMESH_HOST
@@ -329,7 +342,13 @@ int64_t MacMachine::step(int64_t now) {
     // write the disk sector back once the Mac has been quiet on it for a second
     if (secDirty && now - lastDiskWrite > 1000000) flushDisk();
   }
-  if (now - last1Hz >= 1000000) { last1Hz += 1000000; if (now - last1Hz > 2000000) last1Hz = now; umac_1hz_event(); }
+  if (pendingTime) { umac_set_time_now(pendingTime); pendingTime = 0; }
+  if (now - last1Hz >= 1000000) {
+    last1Hz += 1000000; if (now - last1Hz > 2000000) last1Hz = now;
+    umac_1hz_event();
+    // save Control Panel settings (parameter RAM) when the Mac changes them
+    if (umac_rtc_pram_dirty()) { memcpy(m.pram, umac_rtc_pram(), 20); m.clockFlags |= 1; m.lastTime = umac_rtc_get(); saveMeta(); }
+  }
   return 0;
 }
 
@@ -422,7 +441,7 @@ void MacMachine::beginDiskUpload(const std::string& name, int replaceIndex, bool
     m.lib[upReplace].size = 0;   // gone until the new one is complete
     if (m.active == upReplace) { m.active = -1; m.diskSize = 0; }
     saveMeta();
-  } else { freeGap(upBase, upLimit); }
+  } else { compactLibrary(); freeGap(upBase, upLimit); }
   upPos = upErased = upStart = upLen = upSkipped = upHeadN = 0;
   upHeaderDone = upFailed = false;
   upFormat = DISK_UNKNOWN;
@@ -510,7 +529,39 @@ void MacMachine::freeGap(uint32_t& start, uint32_t& len, int ignore) const {
   }
 }
 
-uint32_t MacMachine::libraryFree() const { uint32_t s, l; freeGap(s, l); return l; }
+uint32_t MacMachine::libraryFree() const {
+  uint32_t used = 0;
+  for (int i = 0; i < LIB_MAX; i++) if (m.lib[i].size) used += round4k(m.lib[i].size);
+  return used < diskArea->size() ? diskArea->size() - used : 0;
+}
+
+// Slides every disk down so the free space is one piece at the end. The Mac must be paused.
+void MacMachine::compactLibrary() {
+  flushDisk();
+  uint8_t* buf = nullptr;
+  uint32_t pos = 0;
+  for (;;) {
+    int next = -1;   // the lowest disk at or after pos
+    for (int i = 0; i < LIB_MAX; i++)
+      if (m.lib[i].size && m.lib[i].off >= pos && (next < 0 || m.lib[i].off < m.lib[next].off)) next = i;
+    if (next < 0) break;
+    MacMeta::LibDisk& d = m.lib[next];
+    if (d.off != pos) {
+      if (!buf && !(buf = (uint8_t*)malloc(SECTOR))) break;
+      uint32_t len = round4k(d.size);
+      for (uint32_t o = 0; o < len; o += SECTOR) {      // ascending copy is safe: we only move down
+        diskArea->read(d.off + o, buf, SECTOR);
+        diskArea->erase(pos + o, SECTOR);
+        diskArea->write(pos + o, buf, SECTOR);
+      }
+      d.off = pos;
+      if (next == m.active) { diskBase = pos; secIdx = -1; }
+      saveMeta();   // after each disk, so a power cut loses nothing
+    }
+    pos += round4k(d.size);
+  }
+  free(buf);
+}
 
 bool MacMachine::useDisk(int i) {
   if (i < 0 || i >= LIB_MAX || !m.lib[i].size) return false;
@@ -527,5 +578,6 @@ bool MacMachine::removeDisk(int i) {
   if (i == m.active) { flushDisk(); m.active = -1; m.diskSize = 0; m.diskName[0] = 0; secIdx = -1; secDirty = false; }
   m.lib[i].size = 0; m.lib[i].name[0] = 0;
   saveMeta();
+  compactLibrary();   // give the space back: later disks slide down
   return true;
 }

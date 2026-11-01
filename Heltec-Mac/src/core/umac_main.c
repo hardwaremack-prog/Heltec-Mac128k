@@ -170,6 +170,118 @@ static void     via_ra_changed(uint8_t val)
         oldval = val;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Heltec-Mac: real-time clock chip (seconds counter + parameter RAM), on VIA port B:
+// bit 0 = rtcData, bit 1 = rtcClk, bit 2 = rtcEnb (active low).  The Mac clocks a
+// command byte in (MSB first, sampled on the rising clock edge); for reads the chip
+// then presents each bit after a falling edge.  Commands (z = 1 for read):
+//   z00x aa01  seconds byte aa (0 = lowest)     0011 0001  test register (write)
+//   0011 0101  write-protect (bit 7)            z010 aa01  PRAM $10-$13
+//   z1aa aa01  PRAM $00-$0F                     z011 1aaa + 0aaa aa00  extended PRAM
+static uint32_t rtc_secs = 0;          /* Mac time: seconds since 1904, local */
+static uint8_t  rtc_pram[20];
+static uint8_t  rtc_xpram[256];
+static int      rtc_wp = 0;
+static int      rtc_pram_dirty = 0;
+static uint8_t  rtc_last = 0x07;
+static int      rtc_mode = 0;          /* 0 command, 1 xpram address, 2 write data, 3 sending */
+static int      rtc_bits = 0, rtc_outbit = -1;
+static uint8_t  rtc_shift = 0, rtc_cmd = 0, rtc_out = 0;
+static int      rtc_xaddr = 0;
+
+static uint8_t *rtc_reg(uint8_t c, int *is_secs)
+{
+        int reg = (c >> 2) & 0x1f;
+        *is_secs = -1;
+        if (reg < 8) { *is_secs = reg & 3; return NULL; }
+        if (reg >= 8 && reg < 12) return &rtc_pram[16 + (reg & 3)];
+        if (reg >= 16) return &rtc_pram[reg & 15];
+        return NULL;
+}
+
+static void     rtc_command(uint8_t c)
+{
+        int is_secs;
+        rtc_cmd = c;
+        if ((c & 0x78) == 0x38) {                       /* extended PRAM: one more byte */
+                rtc_xaddr = (c & 7) << 5;
+                rtc_mode = 1;
+                return;
+        }
+        if (c & 0x80) {                                  /* read */
+                uint8_t *p = rtc_reg(c, &is_secs);
+                rtc_out = is_secs >= 0 ? (rtc_secs >> (8 * is_secs)) & 0xff : (p ? *p : 0);
+                rtc_mode = 3; rtc_outbit = -1;
+        } else {
+                rtc_mode = 2;                            /* write: data byte follows */
+        }
+}
+
+static void     rtc_byte(uint8_t b)
+{
+        int is_secs;
+        if (rtc_mode == 0) { rtc_command(b); return; }
+        if (rtc_mode == 1) {                             /* extended PRAM address */
+                rtc_xaddr |= (b >> 2) & 0x1f;
+                if (rtc_cmd & 0x80) { rtc_out = rtc_xpram[rtc_xaddr]; rtc_mode = 3; rtc_outbit = -1; }
+                else rtc_mode = 2;
+                return;
+        }
+        /* rtc_mode == 2: the data byte of a write */
+        rtc_mode = 0;
+        if ((rtc_cmd & 0x78) == 0x38) {
+                if (!rtc_wp && rtc_xpram[rtc_xaddr] != b) { rtc_xpram[rtc_xaddr] = b; rtc_pram_dirty = 1; }
+                return;
+        }
+        if (rtc_cmd == 0x35) { rtc_wp = !!(b & 0x80); return; }
+        if (rtc_cmd == 0x31) return;
+        if (rtc_wp) return;
+        uint8_t *p = rtc_reg(rtc_cmd, &is_secs);
+        if (is_secs >= 0) {
+                rtc_secs = (rtc_secs & ~(0xffu << (8 * is_secs))) | ((uint32_t)b << (8 * is_secs));
+        } else if (p && *p != b) {
+                *p = b; rtc_pram_dirty = 1;
+        }
+}
+
+static void     rtc_port(uint8_t val)
+{
+        int enb = val & 4, clk = val & 2, last_clk = rtc_last & 2;
+        if (enb) {                                       /* deselected: start over */
+                rtc_mode = 0; rtc_bits = 0; rtc_outbit = -1;
+        } else if (!last_clk && clk) {                   /* rising edge */
+                if (rtc_mode != 3) {
+                        rtc_shift = (rtc_shift << 1) | (val & 1);
+                        if (++rtc_bits == 8) { rtc_bits = 0; rtc_byte(rtc_shift); }
+                }
+        } else if (last_clk && !clk) {                   /* falling edge */
+                if (rtc_mode == 3) {
+                        if (++rtc_outbit >= 8) { rtc_mode = 0; rtc_outbit = -1; rtc_bits = 0; }
+                }
+        }
+        rtc_last = val;
+}
+
+static int      rtc_data_out(void)
+{
+        if (rtc_mode != 3 || rtc_outbit < 0 || rtc_outbit > 7) return 1;
+        return (rtc_out >> (7 - rtc_outbit)) & 1;
+}
+
+/* API */
+void     umac_rtc_set(uint32_t mac_seconds) { rtc_secs = mac_seconds; }
+uint32_t umac_rtc_get(void) { return rtc_secs; }
+void     umac_rtc_tick(void) { rtc_secs++; }
+uint8_t *umac_rtc_pram(void) { return rtc_pram; }
+int      umac_rtc_pram_dirty(void) { int d = rtc_pram_dirty; rtc_pram_dirty = 0; return d; }
+/* Also set the running system's clock (the low-memory global Time), once the OS is up */
+void     umac_set_time_now(uint32_t mac_seconds)
+{
+        rtc_secs = mac_seconds;
+        if (!overlay)
+                RAM_WR32(0x20c, mac_seconds);
+}
+
 static void     via_rb_changed(uint8_t val)
 {
         // 7 = sndres (sound enable/disable)
@@ -179,6 +291,7 @@ static void     via_rb_changed(uint8_t val)
         // 3 = mouse7 (in, 0 = button pressed)
         // [2:0] = RTC controls
         via_rb_val = val;
+        rtc_port(val);
 }
 
 static uint8_t  via_ra_in(void)
@@ -192,7 +305,7 @@ static uint8_t via_mouse_pressed = 0;
 
 static uint8_t  via_rb_in(void)
 {
-        uint8_t v = via_quadbits;
+        uint8_t v = via_quadbits | rtc_data_out();
         // Mouse not pressed!
         if (!via_mouse_pressed)
                 v |= (1 << 3);

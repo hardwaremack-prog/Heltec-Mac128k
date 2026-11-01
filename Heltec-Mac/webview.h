@@ -12,6 +12,7 @@
 //   'P' utf8...                 paste: type this text on the Mac
 //   'F'                         resend the whole screen
 //   'a' on:u8                   sound on/off
+//   'C' t:u32 tz:i16            the browser's local time as Mac time (seconds since 1904) and its UTC offset (minutes)
 #pragma once
 #include <stdint.h>
 #include <string>
@@ -30,6 +31,7 @@ class WebView {
   std::function<void(bool)> onAudio;                 // browser turned sound on/off
   std::function<bool(uint8_t*)> nextAudio;           // fetch one 371-byte sound frame
   std::function<int()> audioPending;                 // how many sound frames are waiting
+  std::function<void(uint32_t macTime, int tzMin)> onClock;
   uint32_t bytesSent = 0;
   bool audioOn = false;
 
