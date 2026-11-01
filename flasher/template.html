@@ -29,6 +29,7 @@ label{display:flex;gap:8px;align-items:flex-start}
 details{border-top:1px solid var(--line);padding-top:10px}
 summary{cursor:pointer;font-weight:600}
 details ul{margin-top:8px}
+#boardLog{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);height:220px;overflow:auto;white-space:pre-wrap;margin:0;min-width:0}
 #log{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);height:180px;overflow:auto;white-space:pre-wrap;margin:0;min-width:0}
 code{font:13px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px}
 kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
@@ -59,6 +60,11 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
 <p>The board restarts by itself. Then join the Wi-Fi hotspot <b>MacMesh-Setup</b> (password <code>macmesh1</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+
+<section class="step" id="s5"><h2><span class="n">5</span>Watch the board start (optional)</h2>
+<p>Shows what the board prints while it starts: Wi-Fi, memory and whether the Mac started. Useful if it gets stuck. Click <b>Disconnect</b> above first if you're still connected for flashing.</p>
+<div class="row"><button id="watch">Watch the log (restarts the board)</button><button id="stopWatch" disabled>Stop</button><button id="copyLog">Copy log</button></div>
+<pre id="boardLog" aria-live="polite"></pre></section>
 
 <section class="step"><h2><span class="n">?</span>If it won't connect or flash</h2>
 <details open><summary>The board isn't in the list, or nothing happens</summary><ul>
@@ -143,6 +149,45 @@ $('disc').onclick = async () => {
   transport = loader = null;
   $('flash').disabled = true; $('disc').disabled = true; $('connect').disabled = false;
   set('connMsg', 'Disconnected.');
+};
+
+// ---- step 5: board log at 115200
+let watchPort = null, watchReader = null;
+$('watch').onclick = async () => {
+  try {
+    if (transport) { try { await transport.disconnect(); } catch {} transport = loader = null; $('flash').disabled = true; $('disc').disabled = true; $('connect').disabled = false; }
+    watchPort = await navigator.serial.requestPort({});
+    await watchPort.open({ baudRate: 115200 });
+    // pulse EN through RTS to restart the board (normal boot: IO0 high)
+    await watchPort.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await new Promise(r => setTimeout(r, 120));
+    await watchPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+    $('boardLog').textContent = '';
+    $('watch').disabled = true; $('stopWatch').disabled = false;
+    const dec = new TextDecoder();
+    watchReader = watchPort.readable.getReader();
+    for (;;) {
+      const { value, done } = await watchReader.read();
+      if (done) break;
+      const el = $('boardLog');
+      el.textContent += dec.decode(value, { stream: true });
+      if (el.textContent.length > 60000) el.textContent = el.textContent.slice(-40000);
+      el.scrollTop = 1e9;
+    }
+  } catch (e) {
+    if (!/No port selected/i.test(e.message)) $('boardLog').textContent += '\n[' + (e.message || e) + ']\n';
+  }
+  try { watchReader?.releaseLock(); } catch {}
+  try { await watchPort?.close(); } catch {}
+  watchPort = watchReader = null;
+  $('watch').disabled = false; $('stopWatch').disabled = true;
+};
+$('stopWatch').onclick = async () => { try { await watchReader?.cancel(); } catch {} };
+$('copyLog').onclick = async () => {
+  const t = $('boardLog').textContent || $('log').textContent;
+  try { await navigator.clipboard.writeText(t); $('copyLog').textContent = 'Copied'; }
+  catch { const r = document.createRange(); r.selectNodeContents($('boardLog')); getSelection().removeAllRanges(); getSelection().addRange(r); $('copyLog').textContent = 'Selected - press Ctrl+C'; }
+  setTimeout(() => $('copyLog').textContent = 'Copy log', 2500);
 };
 
 // ---- step 3: flash

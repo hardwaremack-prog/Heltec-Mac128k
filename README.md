@@ -19,14 +19,17 @@ A Macintosh Plus running on a **Heltec WiFi LoRa 32 V3** (the Meshtastic board).
 
 ## How much Mac fits
 
-The ESP32-S3 on the Heltec has about 512 KB of RAM in total, and Wi-Fi needs some of it. So this
-Mac has **128–256 KB** of RAM, not the Plus's usual 1 MB. The ROM is patched to accept that size.
-That's plenty for **System 2.0 – 3.2** (Finder 4.1 – 5.3) with MacPaint, MacWrite, MacDraw and
-early games. System 6 and 7 need more memory and won't boot.
+The ESP32-S3 on the Heltec has about 512 KB of RAM in total, and Wi-Fi needs a good share of it.
+So this Mac has **128 KB** of RAM (like the original Mac 128K), or **256 KB** when there's room
+after Wi-Fi, instead of the Plus's usual 1 MB. The ROM is patched to accept that. The Mac Plus
+needs a power-of-two memory size, so sizes in between (160, 192, 208 KB) don't work.
 
-**Auto** RAM picks the biggest size that leaves room for Wi-Fi. Sizes other than 128 KB start
-about 20 seconds slower, because the ROM's memory check takes longer. If the board ever crashes from
-running out of memory, Auto drops one size on the next boot by itself.
+128 KB runs **System 2.0 – 3.2** (Finder 4.1 – 5.3) with MacPaint, MacWrite, MacDraw and early
+games. System 6 and 7 need more memory and won't boot.
+
+The board starts Wi-Fi first, then gives the Mac what's left. **Auto** uses 256 KB if it fits,
+otherwise 128 KB. If the board crashes three starts in a row, it comes up in **safe mode**
+without the Mac, so the web page still works and you can pick a smaller size.
 
 ## 1. Flash it
 
@@ -106,9 +109,17 @@ Mac. (macOS Screen Sharing insists on a password, so use one of the others on a 
 
 ## Settings
 
-- **Mac RAM**: Auto, 256, 208, 192, 160 or 128 KB (restarts the board)
+- **Mac RAM**: Auto, 256 or 128 KB (restarts the board)
 - **Turbo**: run as fast as the ESP32 can instead of at Mac Plus speed
 - **Restart Mac**: like pressing the reset switch
+
+## Troubleshooting
+
+- **Stuck on "JOINING WIFI..." or restarting over and over**: flash the latest firmware. Older
+  builds started the Mac before Wi-Fi and could run out of memory.
+- **Want to see what the board is doing?** Open the flasher page and use **Watch the board start**.
+  It restarts the board and shows its log: Wi-Fi, free memory, and whether the Mac started.
+- **The status page says "Not enough free memory"**: choose **128** under Mac RAM and click Apply.
 
 ## Limitations
 

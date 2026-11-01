@@ -36,7 +36,8 @@ struct MacMeta {
   char diskName[64];
   uint32_t autoCapKB;    // after a crash in Auto mode: don't go above this
   uint32_t lastRamKB;    // RAM size used by the last boot
-  uint32_t reserved[14];
+  uint32_t crashCount;   // boots in a row that ended in a crash (safe mode at 3)
+  uint32_t reserved[13];
 };
 
 struct RomInfo { uint32_t checksum; bool checksumOk; const char* name; bool supported; };
@@ -63,7 +64,8 @@ class MacMachine {
   bool start(size_t freeBytes, size_t largestBlock, size_t reserveBytes, std::string& why);
   // Call at boot if the last run crashed (e.g. ran out of memory): Auto mode then uses a smaller Mac
   void lastBootCrashed();
-  void setRamSettingClear(uint32_t kb) { m.ramSetting = kb; m.autoCapKB = 0; saveMeta(); }
+  void bootWasClean() { if (m.crashCount) { m.crashCount = 0; saveMeta(); } }
+  void setRamSettingClear(uint32_t kb) { m.ramSetting = kb; m.autoCapKB = 0; m.crashCount = 0; saveMeta(); }
 #ifdef MACMESH_HOST
   // PC test build only: run an unpatched test ROM image with the given RAM size
   bool startTest(const uint8_t* testRom, uint32_t ramBytes);
@@ -137,7 +139,7 @@ class MacMachine {
   uint8_t upHead[256];
   uint32_t upHeadN = 0;
   bool diskWriteUpload(const uint8_t* d, size_t n);
-  bool patchRom(uint32_t ramBytes);
+  bool patchRom(uint32_t ramBytes, uint8_t* buf);
 };
 
 extern MacMachine mac;

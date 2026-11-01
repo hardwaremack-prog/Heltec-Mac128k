@@ -36,7 +36,7 @@
 static const char* AP_SSID = "MacMesh-Setup";
 static const char* AP_PASS = "macmesh1";
 static const char* HOSTNAME = "macmesh";
-static const size_t WIFI_RESERVE = 96 * 1024;   // heap to leave for Wi-Fi, web, VNC
+static const size_t RUN_RESERVE = 56 * 1024;    // heap to keep free for Wi-Fi traffic, web page, VNC (Wi-Fi itself is already up)
 
 static PartitionArea romPart, diskPart;
 static VncServer vnc;
@@ -49,7 +49,8 @@ static bool apMode = false;
 static std::string startError;
 static volatile int speedPct = 0;
 static volatile int oledPage = 0;
-static volatile bool cmdReset = false, pauseReq = false, paused = false;
+static volatile bool cmdReset = false, pauseReq = false, paused = false, macReady = false;
+static bool safeMode = false;
 static uint32_t restartAt = 0;
 
 // ---------------- OLED (SSD1306 128x64)
@@ -100,6 +101,7 @@ struct Oled {
 static String ipText() { return apMode ? String("192.168.4.1") : WiFi.localIP().toString(); }
 
 static const char* stateText() {
+  if (safeMode) return "Safe mode";
   if (!mac.running()) return mac.meta().romOk ? "Not running" : "Needs a ROM";
   if (mac.crashed()) return "Stopped (error)";
   if (paused) return "Paused";
@@ -172,6 +174,7 @@ struct WifiConn : VncConn {
 
 // ---------------- emulator task (core 1)
 static void emuTask(void*) {
+  while (!macReady) vTaskDelay(20);
   for (;;) {
     if (pauseReq) {
       mac.flushDisk();
@@ -230,7 +233,8 @@ static void setupWeb() {
     j += "\"vnc\":" + String(vnc.active() ? 1 : 0) + ",\"web\":" + String(webView.active() ? 1 : 0) + ",";
     j += "\"romOk\":" + String(m.romOk ? 1 : 0) + ",\"romName\":\"" + String(ri.name) + "\",";
     j += "\"disk\":" + String(m.diskSize) + ",\"diskName\":\"" + jsonEsc(m.diskName) + "\",\"diskInfo\":\"" + jsonEsc(diskInfo) + "\",";
-    j += "\"diskRO\":" + String(m.diskRO ? 1 : 0) + ",\"heap\":" + String(ESP.getFreeHeap()) + "}";
+    j += "\"diskRO\":" + String(m.diskRO ? 1 : 0) + ",\"heap\":" + String(ESP.getFreeHeap()) + ",";
+    j += "\"heapBlock\":" + String((unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)) + "}";
     web.send(200, "application/json", j);
   });
 
@@ -328,8 +332,9 @@ static void setupWeb() {
 static void netTask(void*) {
   uint32_t lastOled = 0, lastSpeed = millis(), lastLoops = mac.loops;
   uint32_t btnDown = 0;
-  bool btnHeld = false;
+  bool btnHeld = false, cleanMarked = false;
   for (;;) {
+    if (!cleanMarked && millis() > 60000) { cleanMarked = true; mac.bootWasClean(); }
     web.handleClient();
     WiFiClient nc = vncListener.accept();
     if (nc) vnc.attach(new WifiConn(nc));
@@ -376,15 +381,6 @@ void setup() {
     Serial.println("Last run crashed: using a smaller Mac in Auto mode");
     mac.lastBootCrashed();
   }
-
-  // Start the Mac first, while the heap is still in one big piece
-  size_t freeH = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  Serial.printf("Heap before Mac: free %u, largest block %u\n", (unsigned)freeH, (unsigned)largest);
-  if (romPart.p && diskPart.p && mac.start(freeH, largest, WIFI_RESERVE, startError))
-    Serial.printf("Mac started with %u KB RAM\n", (unsigned)(mac.ramBytes() / 1024));
-  else
-    Serial.printf("Mac not started: %s\n", startError.c_str());
   refreshDiskInfo();
 
   oled.begin();
@@ -410,7 +406,7 @@ void setup() {
     MDNS.addService("http", "tcp", 80);
     MDNS.addService("rfb", "tcp", 5900);
   }
-  Serial.printf("Mac Mesh ready: http://%s  (VNC :5900)  free heap %u\n", ipText().c_str(), (unsigned)ESP.getFreeHeap());
+  Serial.printf("Wi-Fi up: http://%s  free heap %u\n", ipText().c_str(), (unsigned)ESP.getFreeHeap());
 
   // viewers share the same hooks
   auto fb = [] { return mac.framebuffer(); };
@@ -430,6 +426,22 @@ void setup() {
 
   xTaskCreatePinnedToCore(emuTask, "mac", 8192, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 2, nullptr, 0);
+
+  // Now the Mac gets what's left, after Wi-Fi, the servers and the tasks have taken their share.
+  // If the board crashed three boots in a row, stay in safe mode (no Mac) so the page still works.
+  safeMode = mac.meta().crashCount >= 3;
+  size_t freeH = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  Serial.printf("Heap before Mac: free %u, largest block %u\n", (unsigned)freeH, (unsigned)largest);
+  if (safeMode) {
+    startError = "The board crashed 3 times in a row starting the Mac. Pick a smaller Mac RAM below and click Apply.";
+    Serial.println("Safe mode: Mac not started");
+  } else if (romPart.p && diskPart.p && mac.start(freeH, largest, RUN_RESERVE, startError)) {
+    Serial.printf("Mac started with %u KB RAM, free heap now %u\n", (unsigned)(mac.ramBytes() / 1024), (unsigned)ESP.getFreeHeap());
+  } else {
+    Serial.printf("Mac not started: %s\n", startError.c_str());
+  }
+  macReady = true;
 }
 
 void loop() { vTaskDelete(nullptr); }

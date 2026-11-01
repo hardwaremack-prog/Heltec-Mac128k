@@ -156,8 +156,10 @@ bool MacMachine::begin(FlashArea* r, FlashArea* d) {
 }
 
 void MacMachine::lastBootCrashed() {
+  m.crashCount++;
+  saveMeta();
   if (m.ramSetting || !m.lastRamKB) return;
-  static const uint32_t sizes[] = {256, 208, 192, 160, 128};
+  static const uint32_t sizes[] = {256, 128};
   for (uint32_t kb : sizes)
     if (kb < m.lastRamKB) { m.autoCapKB = kb; saveMeta(); return; }
 }
@@ -167,14 +169,13 @@ void MacMachine::saveMeta() {
   romArea->write(ROM_AREA_META, &m, sizeof m);
 }
 
-bool MacMachine::patchRom(uint32_t ramBytes) {
-  uint8_t* buf = (uint8_t*)malloc(MAC_ROM_SIZE);
-  if (!buf) return false;
+// Patches the ROM for this RAM size, using the (not yet started) Mac RAM as the 128 KB work
+// buffer, so no extra memory is needed.
+bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* buf) {
   bool ok = romArea->read(ROM_AREA_ORIG, buf, MAC_ROM_SIZE);
   umac_ram_size = ramBytes;
   ok = ok && rom_patch(buf) == 0;
   ok = ok && romArea->erase(ROM_AREA_PATCHED, MAC_ROM_SIZE) && romArea->write(ROM_AREA_PATCHED, buf, MAC_ROM_SIZE);
-  free(buf);
   if (ok) { m.patchedRam = ramBytes; saveMeta(); }
   return ok;
 }
@@ -183,7 +184,10 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   if (!m.romOk) { why = "No Mac Plus ROM yet - upload one on the web page."; return false; }
 
   // Pick the RAM size: the user's choice if it fits, else the biggest that leaves room for Wi-Fi.
-  static const uint32_t sizes[] = {256, 208, 192, 160, 128};
+  // Only 128 KB and 256 KB work: the Mac Plus ROM needs a power-of-two memory size
+  // (160/192/208 KB hang on a grey screen).
+  static const uint32_t sizes[] = {256, 128};
+  if (m.ramSetting != 0 && m.ramSetting != 128 && m.ramSetting != 256) m.ramSetting = 0;
   uint32_t pick = 0;
   auto fits = [&](uint32_t kb, size_t keep) { return kb * 1024 <= largest && freeBytes >= kb * 1024 + keep; };
   if (m.ramSetting && fits(m.ramSetting, reserve / 2)) pick = m.ramSetting;
@@ -193,13 +197,16 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   if (!pick) { why = "Not enough free memory for even a 128K Mac."; return false; }
   uint32_t bytes = pick * 1024;
 
-  if (m.patchedRam != bytes && !patchRom(bytes)) { why = "Couldn't prepare the ROM (out of memory or bad ROM)."; return false; }
+  ram = (uint8_t*)malloc(bytes);
+  if (!ram) { why = "RAM allocation failed."; return false; }
+  if (m.patchedRam != bytes && !patchRom(bytes, ram)) {
+    free(ram); ram = nullptr;
+    why = "Couldn't prepare the ROM (bad ROM?) - upload it again.";
+    return false;
+  }
   umac_ram_size = bytes;
   rom = romArea->map(ROM_AREA_PATCHED, MAC_ROM_SIZE);
-  if (!rom) { why = "Couldn't map the ROM."; return false; }
-
-  ram = (uint8_t*)malloc(bytes);
-  if (!ram) { romArea->unmap(); rom = nullptr; why = "RAM allocation failed."; return false; }
+  if (!rom) { free(ram); ram = nullptr; why = "Couldn't map the ROM."; return false; }
   memset(ram, 0, bytes);
   ramSize = bytes;
   if (m.lastRamKB != pick) { m.lastRamKB = pick; saveMeta(); }
@@ -374,7 +381,7 @@ bool MacMachine::finishRomUpload(std::string& msg) {
     romArea->read(ROM_AREA_PATCHED + off, buf, sizeof buf);
     romArea->write(ROM_AREA_ORIG + off, buf, sizeof buf);
   }
-  m.romOk = 1; m.romChecksum = ck; m.patchedRam = 0;
+  m.romOk = 1; m.romChecksum = ck; m.patchedRam = 0; m.crashCount = 0;
   saveMeta();
   msg = std::string("Mac Plus v3 ROM saved (") + info.name + ").";
   if (upPos > MAC_ROM_SIZE) {

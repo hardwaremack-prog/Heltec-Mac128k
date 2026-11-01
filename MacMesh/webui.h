@@ -59,8 +59,8 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="diskRO">Write-protect</button><button id="diskEj">Eject</button></div>
 </section>
 <section><h2>Machine</h2>
- <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option><option>256</option><option>208</option><option>192</option><option>160</option><option>128</option></select></label>
- <p class="mute">More RAM leaves less for Wi-Fi. If a size doesn't fit, it drops to the next one down.</p>
+ <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option><option>256</option><option>128</option></select></label>
+ <p class="mute">The Mac Plus needs 128 KB or 256 KB. 256 KB only fits if Wi-Fi leaves enough room; otherwise it uses 128 KB.</p>
  <div class="bar" style="justify-content:flex-start"><button id="ramSet">Apply (restarts the board)</button><button id="turbo">Turbo: off</button></div>
 </section>
 <section><h2>Type into the Mac</h2>
@@ -165,7 +165,7 @@ $('bReset').onclick=async()=>{if(confirm('Restart the Mac? Unsaved work on the M
 function kb(n){return Math.round(n/1024)+' KB'}
 async function status(){try{const s=await (await fetch('/api/status')).json();lastStatus=s;
  const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of a Mac Plus'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
-  ['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)]];
+  ['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
  $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'');
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
