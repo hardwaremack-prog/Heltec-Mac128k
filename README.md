@@ -173,7 +173,7 @@ sound; use the browser for that.
 - **OLED:** the board's address and the Mac's status. Tap **PRG** to switch to a tiny live view
   of the Mac screen.
 - **Hold PRG for 2 seconds** to restart the Mac.
-- **White LED:** on while someone is viewing.
+- **White LED:** a short, dim blink every few seconds while someone is viewing.
 - **Safe mode:** if the board crashes three starts in a row, it comes up without the Mac so the
   page still works and shows what happened.
 

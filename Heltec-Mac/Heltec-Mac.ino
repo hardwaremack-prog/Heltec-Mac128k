@@ -260,7 +260,7 @@ static void goToSleep() {
   delay(1500);
   if (oled.ok) { oled.cmd(0x8D); oled.cmd(0x10); oled.cmd(0xAE); }   // charge pump off, display off
   digitalWrite(PIN_VEXT, HIGH);                                         // cut power to the OLED
-  digitalWrite(PIN_LED, LOW);
+  analogWrite(PIN_LED, 0);
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
   while (digitalRead(PIN_BUTTON) == LOW) delay(10);   // don't wake straight away if PRG is held
   holdForViewer = 0xB007CAFE;
@@ -478,7 +478,11 @@ static void netTask(void*) {
     if (wc) webView.attach(new WifiConn(wc));
     vnc.poll();
     webView.poll();
-    digitalWrite(PIN_LED, (vnc.active() || webView.active()) ? HIGH : LOW);
+    {   // LED: a short, dim blink every 3 s while someone is watching
+      static int ledLevel = -1;
+      int want = (vnc.active() || webView.active()) && millis() % 3000 < 60 ? 18 : 0;
+      if (want != ledLevel) { analogWrite(PIN_LED, want); ledLevel = want; }
+    }
 
     uint32_t now = millis();
     if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; ESP.restart(); }
