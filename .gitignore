@@ -8,3 +8,4 @@ host/page.png
 web/obj/
 web/heltec-mac.wasm
 flasher/node_modules/
+*-backup-*.bin

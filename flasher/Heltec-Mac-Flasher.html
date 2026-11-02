@@ -58,6 +58,15 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <progress id="prog" max="100" value="0" hidden></progress>
 <p class="status" id="flashMsg"></p></section>
 
+<section class="step" id="sB"><h2><span class="n">&#8645;</span>Back up or clone a board (optional)</h2>
+<p>A backup is an exact copy of the whole board: the firmware, your ROM, every disk in the library and the Wi-Fi settings. Restore it later, or write it onto a second Heltec V3 to make a clone. Connect first (step 2).</p>
+<p class="status warn">A backup holds your Wi-Fi password and your Apple ROM, so keep the file to yourself.</p>
+<div class="row"><button class="primary" id="backup" disabled>Back up this board</button></div>
+<label><span>Restore or clone from a backup file: <input type="file" id="restoreFile" accept=".bin"></span></label>
+<div class="row"><button id="restore" disabled>Write backup to this board</button></div>
+<progress id="bprog" max="100" value="0" hidden></progress>
+<p class="status" id="backupMsg"></p></section>
+
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
 <p>The board restarts by itself (if the screen stays dark, tap <kbd>RST</kbd> once). Then join the Wi-Fi hotspot <b>Heltec-Mac-Setup</b> (password <code>heltecmac</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
 
@@ -119,7 +128,8 @@ else set('browserMsg', 'This browser can\'t flash boards. Open this file in Goog
 $('connect').disabled = !ok;
 
 // ---- step 2: connect
-let transport = null, loader = null;
+let transport = null, loader = null, flashBytes = 8 * 1048576;
+const connButtons = on => { for (const id of ['flash', 'disc', 'backup', 'restore']) $(id).disabled = !on; $('connect').disabled = on; };
 const term = { clean(){}, writeLine: s => log(s), write: s => { $('log').textContent += s; } };
 $('connect').onclick = async () => {
   try {
@@ -131,12 +141,12 @@ $('connect').onclick = async () => {
     const chip = await loader.main();
     const mac = await loader.chip.readMac(loader).catch(() => '');
     const flashId = await loader.readFlashId().catch(() => 0);
-    const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0;
+    const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0; flashBytes = sizeMB ? sizeMB * 1048576 : 8 * 1048576;
     $('chipInfo').textContent = `${chip}${mac ? '  ·  MAC ' + mac : ''}${sizeMB ? '  ·  ' + sizeMB + ' MB flash' : ''}`;
     if (!/ESP32-S3/i.test(chip)) set('connMsg', 'Connected, but this isn\'t an ESP32-S3. Heltec-Mac is for the Heltec WiFi LoRa 32 V3.', 'warn');
     else if (sizeMB && sizeMB < 8) set('connMsg', 'Connected, but the board has less than 8 MB of flash; Heltec-Mac needs 8 MB.', 'warn');
     else { set('connMsg', 'Connected to the board.', 'ok'); $('s1').classList.add('done'); }
-    $('flash').disabled = false; $('disc').disabled = false; $('connect').disabled = true;
+    connButtons(true);
   } catch (e) {
     log('Connect failed: ' + (e.message || e));
     set('connMsg', /No port selected/i.test(e.message) ? 'No board chosen. Click Connect and pick it from the list.' :
@@ -149,7 +159,7 @@ $('connect').onclick = async () => {
 $('disc').onclick = async () => {
   try { await transport?.disconnect(); } catch {}
   transport = loader = null;
-  $('flash').disabled = true; $('disc').disabled = true; $('connect').disabled = false;
+  connButtons(false);
   set('connMsg', 'Disconnected.');
 };
 
@@ -163,7 +173,7 @@ async function restartBoard(port) {
 let watchPort = null, watchReader = null;
 $('watch').onclick = async () => {
   try {
-    if (transport) { try { await transport.disconnect(); } catch {} transport = loader = null; $('flash').disabled = true; $('disc').disabled = true; $('connect').disabled = false; }
+    if (transport) { try { await transport.disconnect(); } catch {} transport = loader = null; connButtons(false); }
     watchPort = await navigator.serial.requestPort({});
     await watchPort.open({ baudRate: 115200 });
     // pulse EN through RTS to restart the board (normal boot: IO0 high)
@@ -208,7 +218,7 @@ $('flash').onclick = async () => {
     data = await fileToBinStr(f);
     log(`Using ${f.name} (${data.length} bytes)`);
   } else data = b64ToBinStr(FW_B64);
-  $('flash').disabled = true; $('disc').disabled = true;
+  for (const id of ['flash', 'disc', 'backup', 'restore']) $(id).disabled = true;
   $('prog').hidden = false; $('prog').value = 0;
   try {
     if ($('erase').checked) { set('flashMsg', 'Erasing the whole board (about 20-40 seconds)...'); await loader.eraseFlash(); log('Erased.'); }
@@ -226,11 +236,71 @@ $('flash').onclick = async () => {
     transport = loader = null;
     $('s2').classList.add('done');
     set('flashMsg', 'Flashed and verified. The board is restarting now; go to step 4.', 'ok');
-    $('connect').disabled = false;
+    connButtons(false);
   } catch (e) {
     log('Flash failed: ' + (e.message || e));
     set('flashMsg', 'Flashing stopped partway. Unplug and replug the board, put it in download mode (hold PRG, tap RST, let go), choose Slow speed, Connect and Flash again. Nothing is damaged by a failed flash.', 'bad');
     $('disc').disabled = false;
   }
+};
+
+// ---- backup / restore (clone)
+const u8ToBinStr = a => { let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return s; };
+const busy = on => { for (const id of ['flash', 'disc', 'backup', 'restore']) $(id).disabled = on; $('bprog').hidden = !on; if (on) $('bprog').value = 0; };
+$('backup').onclick = async () => {
+  busy(true);
+  try {
+    const mb = flashBytes / 1048576, t0 = Date.now();
+    set('backupMsg', `Reading all ${mb} MB from the board... keep it plugged in (about ${Math.round(mb * 12 * 921600 / +$('baud').value)} seconds).`);
+    // read in 1 MB pieces: esptool-js re-copies its buffer on every packet, which crawls for 8 MB at once
+    const data = new Uint8Array(flashBytes), CH = 1048576;
+    for (let off = 0; off < flashBytes; off += CH) {
+      const n = Math.min(CH, flashBytes - off);
+      const part = await loader.readFlash(off, n, (p, got) => { $('bprog').value = Math.round((off + got) / flashBytes * 100); });
+      data.set(part.subarray(0, n), off);
+    }
+    log(`Read ${data.length} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    set('backupMsg', 'Checking the copy against the board...');
+    const want = await loader.flashMd5sum(0, flashBytes), got = md5(u8ToBinStr(data));
+    if (want !== got) throw new Error(`the copy doesn't match the board (md5 ${got} vs ${want})`);
+    log('Backup verified, md5 ' + got);
+    const d = new Date(), stamp = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
+    a.download = `heltec-mac-backup-${stamp}.bin`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    set('backupMsg', `Backup saved as ${a.download} (${mb} MB, verified). The board is untouched.`, 'ok');
+  } catch (e) {
+    log('Backup failed: ' + (e.message || e));
+    set('backupMsg', 'The backup stopped: ' + (e.message || e) + '. Try Slow speed, reconnect and try again.', 'bad');
+  }
+  busy(false);
+};
+$('restore').onclick = async () => {
+  const f = $('restoreFile').files[0];
+  if (!f) { set('backupMsg', 'Pick a backup .bin file first.', 'bad'); return; }
+  if (f.size > flashBytes) { set('backupMsg', `That file is bigger (${(f.size / 1048576).toFixed(1)} MB) than this board's flash.`, 'bad'); return; }
+  if (!confirm(`Write ${f.name} to this board? Everything on it now (firmware, ROM, disks, Wi-Fi settings) is replaced by the backup.`)) return;
+  busy(true);
+  try {
+    const data = await fileToBinStr(f);
+    if (data.charCodeAt(0) !== 0xE9) throw new Error('that file doesn\'t start with ESP32 firmware, so it isn\'t a board backup');
+    set('backupMsg', 'Writing the backup... keep the board plugged in. Most of it is empty space, which goes quickly.');
+    await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true,
+      reportProgress: (i, written, total) => { $('bprog').value = Math.round(written / total * 100); },
+      calculateMD5Hash: s => md5(s) });
+    log('Restore written and verified.');
+    await restartBoard(transport.device);
+    try { await transport.disconnect(); } catch {}
+    transport = loader = null;
+    busy(false); connButtons(false);
+    set('backupMsg', 'Restored and verified. The board is restarting with everything from the backup.', 'ok');
+    return;
+  } catch (e) {
+    log('Restore failed: ' + (e.message || e));
+    set('backupMsg', 'Writing stopped: ' + (e.message || e) + '. Put the board in download mode (hold PRG, tap RST, let go), reconnect and try again.', 'bad');
+  }
+  busy(false);
 };
 </script></body></html>

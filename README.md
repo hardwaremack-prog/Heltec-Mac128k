@@ -35,6 +35,7 @@ PC, a Raspberry Pi or a phone, and you're at the Finder.
 - **Your choice of ROM.** Works with the original Mac 128K/512K ROM (recommended) or the
   Mac Plus ROM. ROMs aren't included; bring your own.
 - **One-page flasher.** Flash it from Chrome or Edge with a single HTML file. No tools to install.
+  It can also back up a whole board to a file and restore or clone it.
 - **Extras.** VNC on port 5900, a status display on the board's OLED (or a tiny live view of the
   Mac screen), and a safe mode that keeps the page reachable if something goes wrong.
 
@@ -70,6 +71,11 @@ mode), and **Watch the board start** shows the board's own startup log.
 Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin`
 
 Updating later keeps your ROM, disks and Wi‑Fi settings.
+
+**Back up or clone.** After **Connect**, **Back up this board** saves the whole 8 MB flash
+(firmware, ROM, every disk and the Wi‑Fi settings) as one verified `.bin` file.
+**Write backup to this board** puts it back, or onto a second Heltec V3 to make a clone. The
+file holds your Wi‑Fi password and your ROM, so keep it private.
 
 ### 2. Put it on your Wi‑Fi
 
