@@ -898,6 +898,13 @@ void    umac_reset(void)
         guard_val = 0;
         kbd_pending_evt = -1;
         kbd_last_cmd = 0;
+        /* Heltec-Mac: a restart in place also clears half-finished clock-chip and
+         * mouse traffic, and the interrupt lines (umac_init has just set the chips up) */
+        rtc_mode = 0; rtc_bits = 0; rtc_outbit = -1;
+        pending_mouse_deltax = pending_mouse_deltay = 0;
+        scc_irq_state = 0;
+        m68k_set_virq(1, 0);
+        m68k_set_virq(2, 0);
         m68k_pulse_reset();
 }
 

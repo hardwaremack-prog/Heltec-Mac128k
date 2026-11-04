@@ -267,7 +267,7 @@ window.addEventListener('resize',fitScreen);document.addEventListener('fullscree
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
 $('bReboot').onclick=async()=>{if(!confirm('Restart the whole Heltec board? The disk is saved first; unsaved work on the Mac is lost.'))return;
- try{await post('/api/reboot')}catch(e){}msg('Restarting the board...');waitForBoard()};
+ try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin Heltec-Mac-Setup by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
 $('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The disk is saved first. Press PRG (or RST) on the board to wake it.'))return;
  try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press PRG (or RST) on the board to wake it; this page reconnects by itself.');
  await new Promise(r=>setTimeout(r,4000));

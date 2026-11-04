@@ -83,6 +83,7 @@ static struct via_cb via_callbacks;
 static int irq_status = 0;
 static uint8_t irq_active = 0;
 static uint8_t irq_enable = 0;
+static int sr_tx_pending = -1;
 
 void    via_init(struct via_cb *cb)
 {
@@ -91,6 +92,14 @@ void    via_init(struct via_cb *cb)
         via_regs[VIA_RA] = 0x10; // Overlay, FIXME
         if (cb)
                 via_callbacks = *cb;
+        /* Heltec-Mac: via_init also runs when the Mac restarts in place; start with
+         * no interrupt pending, and tell the CPU so, or a VIA interrupt that was up
+         * at that moment would never be signalled again (frozen cursor and mouse). */
+        irq_active = irq_enable = 0;
+        irq_status = 0;
+        sr_tx_pending = -1;
+        if (via_callbacks.irq_set)
+                via_callbacks.irq_set(0);
 }
 
 static void via_update_rega(uint8_t data)
@@ -105,7 +114,6 @@ static void via_update_regb(uint8_t data)
                 via_callbacks.rb_change(data);
 }
 
-static int sr_tx_pending = -1;
 
 static void via_update_sr(uint8_t data)
 {

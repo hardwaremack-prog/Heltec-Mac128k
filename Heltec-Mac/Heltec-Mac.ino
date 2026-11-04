@@ -115,6 +115,10 @@ static volatile bool cmdReset = false, pauseReq = false, paused = false, macRead
 // After a restart asked for from the web page, the Mac waits (up to 25 s) for that browser to
 // reconnect before it powers on, so the startup sound plays there. Survives ESP.restart().
 RTC_NOINIT_ATTR static uint32_t holdForViewer;
+// Restarted from the hotspot? Come straight back as the hotspot, on the same channel
+RTC_NOINIT_ATTR static uint32_t apResume;   // 0xA9C40000 | channel
+static int apChannel = 6;
+static bool wifiChanged = false;   // new network saved: try it after the restart
 static volatile bool holdMac = false;
 static uint32_t holdUntil = 0, viewerSince = 0;
 static bool safeMode = false;
@@ -520,6 +524,7 @@ static void setupWeb() {
   web.on("/api/wifi", HTTP_POST, [] {
     prefs.putString("ssid", web.arg("ssid"));
     prefs.putString("pass", web.arg("pass"));
+    wifiChanged = true;
     web.send(200, "text/plain", "ok");
     pauseEmu();
     restartAt = millis() + 600;
@@ -575,7 +580,7 @@ static void netTask(void*) {
     }
 
     uint32_t now = millis();
-    if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; ESP.restart(); }
+    if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; apResume = apMode && !wifiChanged ? 0xA9C40000u | apChannel : 0; ESP.restart(); }
     if (sleepAt && (int32_t)(now - sleepAt) >= 0) goToSleep();
     static uint32_t lastBat = 0;
     if (!lastBat || now - lastBat >= 10000) { readBattery(); lastBat = now | 1; }
@@ -622,7 +627,10 @@ void setup() {
   // Wi-Fi: saved network, else hotspot
   String ssid = prefs.getString("ssid", ""), pass = prefs.getString("pass", "");
   WiFi.setHostname(HOSTNAME);
-  if (ssid.length()) {
+  bool resumeAP = (apResume & 0xFFFF0000u) == 0xA9C40000u && esp_reset_reason() == ESP_RST_SW;
+  int resumeCh = apResume & 0xFF;
+  apResume = 0;
+  if (ssid.length() && !resumeAP) {
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.begin(ssid.c_str(), pass.c_str());
@@ -636,7 +644,8 @@ void setup() {
     WiFi.setAutoReconnect(false);
     WiFi.disconnect(false, false);
     WiFi.mode(WIFI_STA);
-    int ch = quietestChannel();
+    int ch = resumeAP && resumeCh >= 1 && resumeCh <= 13 ? resumeCh : quietestChannel();
+    apChannel = ch;
     WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
     WiFi.softAP(AP_SSID, AP_PASS, ch, 0, 2);

@@ -143,8 +143,9 @@ Open `http://<board address>` (or `http://heltec-mac.local`) and click the Mac s
 - **Pixels:** **Auto** keeps the screen razor sharp when there's room, **Fill** uses all the
   space. **Full screen** gives you just the Mac.
 - **Restart Mac** works like the Mac's reset switch. **Restart board** restarts the whole
-  Heltec, like pressing RST. **Sleep board** puts it to sleep (see below). Each one saves the
-  disk first.
+  Heltec, like pressing RST; on the hotspot it comes straight back as the hotspot, but your
+  device may need a moment (or a tap in its Wi‑Fi list) to rejoin it. **Sleep board** puts it
+  to sleep (see below). Each one saves the disk first.
 
 One browser at a time can view the Mac. Opening it somewhere else takes over.
 
