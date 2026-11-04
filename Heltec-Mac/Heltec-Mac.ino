@@ -14,6 +14,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
@@ -49,6 +50,8 @@ static WiFiServer vncListener(5900), wsListener(81);
 static Preferences prefs;
 
 static bool apMode = false;
+static DNSServer dns;
+static String savedSsid, savedPass;
 static std::string startError;
 static volatile int speedPct = 0;
 static volatile int oledPage = 0;
@@ -447,8 +450,20 @@ static void setupWeb() {
     pauseEmu();
     restartAt = millis() + 600;
   });
+  // phone/PC "am I online?" checks: say yes, so the hotspot isn't treated as a sign-in portal
+  web.on("/hotspot-detect.html", [] { web.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"); });
+  web.on("/library/test/success.html", [] { web.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"); });
+  web.on("/generate_204", [] { web.send(204); });
+  web.on("/gen_204", [] { web.send(204); });
+  web.on("/connecttest.txt", [] { web.send(200, "text/plain", "Microsoft Connect Test"); });
+  web.on("/success.txt", [] { web.send(200, "text/plain", "success\n"); });
+  web.on("/ncsi.txt", [] { web.send(200, "text/plain", "Microsoft NCSI"); });
   web.onNotFound([] {
-    if (apMode) { web.sendHeader("Location", "http://192.168.4.1/"); web.send(302); return; }  // captive-ish
+    if (apMode && web.hostHeader() != "192.168.4.1" && web.hostHeader().indexOf("heltec-mac") < 0) {
+      if (web.uri() == "/") { web.sendHeader("Location", "http://192.168.4.1/"); web.send(302); }   // typed a name by hand
+      else web.send(404, "text/plain", "Not found");
+      return;
+    }
     web.send(404, "text/plain", "Not found");
   });
   web.begin();
@@ -460,7 +475,21 @@ static void netTask(void*) {
   uint32_t btnDown = 0;
   bool btnHeld = false, cleanMarked = false;
   uint32_t lastNtp = 0;
+  uint32_t apRetryAt = millis() + 120000, apTryUntil = 0;
   for (;;) {
+    if (apMode) {
+      dns.processNextRequest();
+      // Brought back home? Every 2 minutes, while nobody is on the hotspot, try the saved network
+      // for 12 s; if it answers, restart onto it.
+      uint32_t t = millis();
+      if (apTryUntil) {
+        if (WiFi.status() == WL_CONNECTED) { Serial.println("Saved Wi-Fi is back - restarting onto it"); restartAt = t + 200; apTryUntil = 0; }
+        else if ((int32_t)(t - apTryUntil) >= 0 || WiFi.softAPgetStationNum()) { WiFi.disconnect(false, false); apTryUntil = 0; apRetryAt = t + 120000; }
+      } else if (savedSsid.length() && (int32_t)(t - apRetryAt) >= 0) {
+        if (WiFi.softAPgetStationNum() == 0) { WiFi.begin(savedSsid.c_str(), savedPass.c_str()); apTryUntil = t + 12000; }
+        else apRetryAt = t + 120000;
+      }
+    }
     // internet time: once it arrives, and every 6 hours (only if we know your time zone)
     if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
       time_t utc = time(nullptr);
@@ -538,10 +567,20 @@ void setup() {
     WiFi.begin(ssid.c_str(), pass.c_str());
     for (int i = 0; i < 150 && WiFi.status() != WL_CONNECTED; i++) delay(100);
   }
+  savedSsid = ssid; savedPass = pass;
   if (WiFi.status() != WL_CONNECTED) {
     apMode = true;
+    // Stop the station side from hunting for the saved network: every retry hops channels,
+    // which knocks phones and laptops off the hotspot and stalls the web page.
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(AP_SSID, AP_PASS);
+    WiFi.setSleep(false);
+    WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 4);
+    // Answer every name with 192.168.4.1 and tell phones "internet is fine", so they stay on
+    // the hotspot instead of popping a sign-in sheet (closing that sheet on an iPhone drops Wi-Fi).
+    dns.setErrorReplyCode(DNSReplyCode::NoError);
+    dns.start(53, "*", WiFi.softAPIP());
   } else {
     WiFi.setAutoReconnect(true);
   }
