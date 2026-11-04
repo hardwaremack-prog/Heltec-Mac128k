@@ -135,6 +135,8 @@ One browser at a time can view the Mac. Opening it somewhere else takes over.
 | A loose program inside any of these | **Add to the disk in use** copies it onto that disk |
 | An 800K HFS disk with no System on it (a game or app disk) | Its programs are pulled out and offered for **Add to the disk in use** |
 
+- **No disk** (at the end of the list) starts the Mac with an empty drive: the blinking
+  question-mark disk, as on a real Mac with no floppy in.
 - **Download** saves a disk, with everything you've changed, back to your computer.
 - **Remove** deletes a disk and gives its space back. The disks after it slide down in flash,
   which can take a few seconds.

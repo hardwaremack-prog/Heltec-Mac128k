@@ -285,9 +285,10 @@ function renderLib(s){const L=s.lib||[];
  $('lib').innerHTML=L.length?L.map(d=>'<div class="disk'+(d.i==s.active?' cur':'')+'"><div class="nm"><b>'+esc(d.n.replace(/\.img$/i,''))+'</b><br><span class="mute">'+kb(d.s)+(d.d?' &middot; '+esc(d.d):'')+'</span></div>'+
   (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'"'+(pendingDel==d.i?' class="sure">Sure?':'>Remove')+'</button></div>').join(''):
   '<p class="mute">No disks yet. Add one below.</p>';
- $('libFree').textContent=kb(s.libFree||0)+' free for more disks'+(s.active<0&&L.length?' · no disk in use, so the Mac shows the question-mark disk':'')}
+ if(L.length)$('lib').innerHTML+='<div class="disk'+(s.active<0?' cur':'')+'"><div class="nm"><b>No disk</b><br><span class="mute">Starts the Mac with an empty drive (the blinking question-mark disk)</span></div>'+(s.active<0?'':'<button data-use="-1">Use</button>')+'</div>';
+ $('libFree').textContent=kb(s.libFree||0)+' free for more disks'}
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
- if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');waitForBoard()}
+ if(u!==undefined){await post('/api/use?i='+u);msg(u=='-1'?'Restarting the Mac with no disk...':'Restarting the Mac with that disk...');waitForBoard()}
  if(d!==undefined){clearTimeout(pendingTimer);
   if(pendingDel!=+d){pendingDel=+d;renderLib(lastStatus);pendingTimer=setTimeout(()=>{pendingDel=-1;renderLib(lastStatus)},4000);return}
   pendingDel=-1;const wasActive=+d==lastStatus.active;

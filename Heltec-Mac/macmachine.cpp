@@ -564,6 +564,12 @@ void MacMachine::compactLibrary() {
 }
 
 bool MacMachine::useDisk(int i) {
+  if (i == -1) {   // no disk: the Mac starts with the question-mark disk
+    flushDisk();
+    m.active = -1; m.diskSize = 0; m.diskName[0] = 0; secIdx = -1; secDirty = false;
+    saveMeta();
+    return true;
+  }
   if (i < 0 || i >= LIB_MAX || !m.lib[i].size) return false;
   flushDisk();
   m.active = i; diskBase = m.lib[i].off; m.diskSize = m.lib[i].size;
