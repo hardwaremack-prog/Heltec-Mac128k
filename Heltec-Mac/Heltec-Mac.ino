@@ -14,7 +14,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
-#include <DNSServer.h>
 #include <Preferences.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
@@ -50,7 +49,6 @@ static WiFiServer vncListener(5900), wsListener(81);
 static Preferences prefs;
 
 static bool apMode = false;
-static DNSServer dns;
 static String savedSsid, savedPass;
 static std::string startError;
 static volatile int speedPct = 0;
@@ -211,7 +209,7 @@ struct WifiConn : VncConn {
     while (n > 0) {
       size_t w = c.write(b, n);
       if (w == 0) {
-        if (!c.connected() || ++idle > 400) return false;   // stuck for ~0.4 s: drop the viewer, it reconnects
+        if (!c.connected() || ++idle > 2000) return false;   // stuck for 2 s: drop the viewer, it reconnects
         delay(1);
         continue;
       }
@@ -334,6 +332,9 @@ static void setupWeb() {
       first = false;
     }
     j += "],";
+    { static const char* rr[] = {"unknown", "power on", "RST button", "restart", "crash", "watchdog", "watchdog", "watchdog", "woke from sleep",
+                                 "brownout (power dip)", "SDIO", "USB", "JTAG", "efuse", "power glitch", "CPU lockup"};
+      int r = (int)esp_reset_reason(); j += "\"uptime\":" + String(millis() / 1000) + ",\"reset\":\"" + String(r >= 0 && r < 16 ? rr[r] : "other") + "\","; }
     j += "\"bat\":" + String(batMv) + ",\"batPct\":" + String(batMv > 0 ? batteryPct(batMv) : -1) + ",\"batText\":\"" + batteryText(false) + "\",";
     j += "\"heapBlock\":" + String((unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)) + "}";
     web.send(200, "application/json", j);
@@ -479,9 +480,6 @@ static void netTask(void*) {
   bool btnHeld = false, cleanMarked = false;
   uint32_t lastNtp = 0;
   for (;;) {
-    if (apMode) {
-      dns.processNextRequest();
-    }
     // internet time: once it arrives, and every 6 hours (only if we know your time zone)
     if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
       time_t utc = time(nullptr);
@@ -568,15 +566,16 @@ void setup() {
     WiFi.disconnect(true, false);
     WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
-    WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 4);
-    // Answer every name with 192.168.4.1 and tell phones "internet is fine", so they stay on
-    // the hotspot instead of popping a sign-in sheet (closing that sheet on an iPhone drops Wi-Fi).
-    dns.setErrorReplyCode(DNSReplyCode::NoError);
-    dns.start(53, "*", WiFi.softAPIP());
+    WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 2);
+    // You sit next to the board on the hotspot, so full power isn't needed; lower power also
+    // avoids current spikes that can reset the board on a weak USB port or battery.
+    WiFi.setTxPower(WIFI_POWER_11dBm);
+    // No DNS server and no mDNS here: both cost heap this board can't spare in hotspot mode.
+    // Phones then just say "no internet" and stay connected.
   } else {
     WiFi.setAutoReconnect(true);
   }
-  if (MDNS.begin(HOSTNAME)) {
+  if (!apMode && MDNS.begin(HOSTNAME)) {
     MDNS.addService("http", "tcp", 80);
     MDNS.addService("rfb", "tcp", 5900);
   }
