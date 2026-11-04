@@ -19,6 +19,8 @@
 #include <esp_heap_caps.h>
 #include <time.h>
 #include <esp_sleep.h>
+#include <esp_wifi.h>
+#include <WiFiUdp.h>
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -50,6 +52,62 @@ static Preferences prefs;
 
 static bool apMode = false;
 static String savedSsid, savedPass;
+static WiFiUDP dnsUdp;
+
+// ---------------- tiny DNS answerer for hotspot mode
+// Every name points at the board, so phones and PCs see a working "internet check" (the board
+// answers those too) and stay on the hotspot instead of hopping to a network with internet.
+// Polled from the network task: no extra task, one socket, a 512-byte buffer on the stack.
+static void dnsPoll() {
+  int n = dnsUdp.parsePacket();
+  if (n <= 0) return;
+  uint8_t q[512];
+  if (n < 17 || n > (int)sizeof q - 16) { dnsUdp.flush(); return; }
+  dnsUdp.read(q, n);
+  if (q[2] & 0x80 || ((q[4] << 8) | q[5]) != 1) return;   // only plain queries with one question
+  // read the name, so Windows' own check gets the address it expects
+  char name[96]; int ni = 0, p = 12;
+  while (p < n && q[p]) {
+    int l = q[p++];
+    if (l > 63 || p + l > n) return;
+    for (int k = 0; k < l && ni < 94; k++) name[ni++] = tolower(q[p + k]);
+    if (ni < 94) name[ni++] = '.';
+    p += l;
+  }
+  if (p + 5 > n) return;
+  name[ni ? ni - 1 : 0] = 0;
+  int qend = p + 5;                                  // zero byte, type, class
+  uint16_t qtype = (q[p + 1] << 8) | q[p + 2];
+  q[2] = 0x84 | (q[2] & 0x01); q[3] = 0x80;          // response, authoritative, recursion available
+  q[6] = q[7] = q[8] = q[9] = q[10] = q[11] = 0;     // no answers / authority / extra (for now)
+  int len = qend;
+  if (qtype == 1) {                                  // A record
+    IPAddress ip = strcmp(name, "dns.msftncsi.com") == 0 ? IPAddress(131, 107, 255, 255) : WiFi.softAPIP();
+    const uint8_t a[] = {0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, ip[0], ip[1], ip[2], ip[3]};
+    memcpy(q + len, a, sizeof a); len += sizeof a;
+    q[7] = 1;
+  }
+  dnsUdp.beginPacket(dnsUdp.remoteIP(), dnsUdp.remotePort());
+  dnsUdp.write(q, len);
+  dnsUdp.endPacket();
+}
+
+// Pick the hotspot channel (1, 6 or 11) with the least Wi-Fi around it
+static int quietestChannel() {
+  int n = WiFi.scanNetworks();
+  long score[3] = {0, 0, 0};
+  const int chans[3] = {1, 6, 11};
+  for (int i = 0; i < n; i++) {
+    int ch = WiFi.channel(i), w = 100 + WiFi.RSSI(i);   // a strong neighbour counts more
+    if (w < 5) w = 5;
+    for (int c = 0; c < 3; c++) if (abs(ch - chans[c]) < 4) score[c] += w * (4 - abs(ch - chans[c]));
+  }
+  WiFi.scanDelete();
+  int best = 1;   // channel 6 first if it's tied
+  for (int c = 0; c < 3; c++) if (score[c] < score[best]) best = c;
+  Serial.printf("Hotspot channel %d (busy-ness 1:%ld 6:%ld 11:%ld)\n", chans[best], score[0], score[1], score[2]);
+  return chans[best];
+}
 static std::string startError;
 static volatile int speedPct = 0;
 static volatile int oledPage = 0;
@@ -484,6 +542,7 @@ static void netTask(void*) {
   bool btnHeld = false, cleanMarked = false;
   uint32_t lastNtp = 0;
   for (;;) {
+    if (apMode) dnsPoll();
     // internet time: once it arrives, and every 6 hours (only if we know your time zone)
     if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
       time_t utc = time(nullptr);
@@ -567,15 +626,17 @@ void setup() {
     // Stop the station side from hunting for the saved network: every retry hops channels,
     // which knocks phones and laptops off the hotspot and stalls the web page.
     WiFi.setAutoReconnect(false);
-    WiFi.disconnect(true, false);
+    WiFi.disconnect(false, false);
+    WiFi.mode(WIFI_STA);
+    int ch = quietestChannel();
     WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
-    WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 2);
-    // You sit next to the board on the hotspot, so full power isn't needed; lower power also
-    // avoids current spikes that can reset the board on a weak USB port or battery.
-    WiFi.setTxPower(WIFI_POWER_11dBm);
-    // No DNS server and no mDNS here: both cost heap this board can't spare in hotspot mode.
-    // Phones then just say "no internet" and stay connected.
+    WiFi.softAP(AP_SSID, AP_PASS, ch, 0, 2);
+    // A little below full power: a strong signal, without the biggest current spikes
+    WiFi.setTxPower(WIFI_POWER_17dBm);
+    // Keep a quiet phone or PC on the hotspot for 10 minutes instead of the usual 5
+    esp_wifi_set_inactive_time(WIFI_IF_AP, 600);
+    dnsUdp.begin(53);
   } else {
     WiFi.setAutoReconnect(true);
   }

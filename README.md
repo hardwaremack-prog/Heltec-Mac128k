@@ -103,8 +103,12 @@ to **heltec-mac.local** on most computers.
 No Wi‑Fi around? You can also use the Mac straight from the hotspot: join
 **Heltec-Mac-Setup** and type **http://192.168.4.1** into your browser (the `.local` name
 only works on your home network). Your phone or laptop may say the hotspot has no internet;
-that's expected, so stay connected. In hotspot mode the board turns its Wi‑Fi power down, since
-you're sitting right next to it.
+The board answers your device's "am I online?" check, so it stays on the hotspot instead of
+switching to another network. When it starts the hotspot, the board picks the quietest
+channel (1, 6 or 11) so it doesn't fight your router.
+
+**At home, put the board on your home Wi‑Fi instead** (step 2 above). The hotspot is for
+using the Mac where there's no Wi‑Fi.
 If the board can't find your saved network when it starts (say you took it somewhere else), it
 starts the hotspot instead. Press RST once you're back in range to join your network again.
 
@@ -269,6 +273,9 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
   again. Choose **Slow** speed in the flasher.
 - **Stuck on "JOINING WIFI..." or restarting:** flash the latest version. To see why, use
   **Watch the board start** in the flasher.
+- **Your PC or phone keeps leaving the hotspot:** at home, put the board on your home Wi‑Fi.
+  Otherwise, in your device's Wi‑Fi settings, forget or turn off auto-join for other nearby
+  networks while you use the hotspot, and keep the board within a few metres.
 - **The Mac freezes or the page drops off:** look at **Up** in the Status panel. "brownout"
   means the board's power dipped: try another USB port or cable, or charge the battery.
   "crash" or "watchdog" is a bug; the log from **Watch the board start** helps find it.
