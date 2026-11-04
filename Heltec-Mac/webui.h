@@ -19,7 +19,7 @@ canvas:focus{box-shadow:0 0 0 3px #8fb3d6}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
 button,.btn{font:inherit;padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);cursor:pointer}
 button:hover{border-color:var(--accent)}button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}button.sure{background:var(--bad);color:#fff;border-color:var(--bad)}
 .hint{color:var(--mute);font-size:13px;text-align:center}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
@@ -277,16 +277,22 @@ async function upload(url,file,label,extra){if(!file){msg('Pick a file first',1)
 $('romUp').onclick=()=>upload('/api/rom',$('romFile').files[0],'ROM');
 // ---- disk library. Archives are unpacked in the browser (macfiles.js); the board only stores raw disks.
 let found=[],progs=[];
+let pendingDel=-1,pendingTimer=0;
 function renderLib(s){const L=s.lib||[];
  $('lib').innerHTML=L.length?L.map(d=>'<div class="disk'+(d.i==s.active?' cur':'')+'"><div class="nm"><b>'+esc(d.n.replace(/\.img$/i,''))+'</b><br><span class="mute">'+kb(d.s)+(d.d?' &middot; '+esc(d.d):'')+'</span></div>'+
-  (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'">Remove</button></div>').join(''):
+  (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'"'+(pendingDel==d.i?' class="sure">Sure?':'>Remove')+'</button></div>').join(''):
   '<p class="mute">No disks yet. Add one below.</p>';
  $('libFree').textContent=kb(s.libFree||0)+' free for more disks'+(s.active<0&&L.length?' · no disk in use, so the Mac shows the question-mark disk':'')}
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
  if(u!==undefined){await post('/api/use?i='+u);msg('Restarting the Mac with that disk...');waitForBoard()}
- if(d!==undefined){const row=e.target.closest('.disk');if(e.target.textContent!='Sure?'){e.target.textContent='Sure?';setTimeout(()=>{e.target.textContent='Remove'},3000);return}
+ if(d!==undefined){clearTimeout(pendingTimer);
+  if(pendingDel!=+d){pendingDel=+d;renderLib(lastStatus);pendingTimer=setTimeout(()=>{pendingDel=-1;renderLib(lastStatus)},4000);return}
+  pendingDel=-1;const wasActive=+d==lastStatus.active;
+  e.target.disabled=true;e.target.textContent='Removing...';
   msg('Removing... the board moves your other disks down to free the space, so this can take a few seconds.');
-  try{await post('/api/libdel?i='+d);msg('Removed. The space is free again.')}catch(err){msg(err.message,1)}status()}};
+  try{await post('/api/libdel?i='+d);
+   if(wasActive){msg('Removed. The Mac is restarting without a disk.');waitForBoard();return}
+   msg('Removed. The space is free again.')}catch(err){msg(err.message,1)}status()}};
 function diskLabel(d){const i=d.info;return esc(d.name.split('/').pop())+' &middot; '+Math.round(i.size/1024)+' KB'+(i.fs?' '+i.fs:'')+(i.vol?' &ldquo;'+esc(i.vol)+'&rdquo;':'')+(i.bootable?'':' &middot; not a startup disk')}
 function diskWarning(d){const i=d.info;
  if(i.fs=='HFS'&&lastStatus.ram&&lastStatus.ram<512*1024)return ' Note: HFS disks are usually System 4 or later, which needs 512 KB; this Mac has '+kb(lastStatus.ram)+', so it may stop with an out-of-memory error.';
