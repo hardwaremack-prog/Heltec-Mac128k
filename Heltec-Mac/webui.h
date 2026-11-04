@@ -45,6 +45,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bSize" title="Auto picks sharp when it's big enough. Sharp: every Mac pixel is exactly 2x2 or 3x3 screen pixels. Fill: uses all the space, slightly soft.">Pixels: auto</button>
   <button id="bFull">Full screen</button>
   <button id="bReset">Restart Mac</button>
+  <button id="bReboot" title="Restarts the whole Heltec board, like pressing RST. The disk is saved first.">Restart board</button>
   <button id="bSleep" title="Puts the Heltec board into deep sleep. Press PRG (or RST) on the board to wake it.">Sleep board</button>
  </div>
  <div class="hint">Click the screen to type. Ctrl or Windows key = Command, Alt = Option. Browsers keep Ctrl+W/T/N for themselves, so use the &#8984; button for those.</div>
@@ -241,6 +242,8 @@ $('bSize').onclick=()=>{sizeMode={auto:'sharp',sharp:'fill',fill:'auto'}[sizeMod
 window.addEventListener('resize',fitScreen);document.addEventListener('fullscreenchange',fitScreen);
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
+$('bReboot').onclick=async()=>{if(!confirm('Restart the whole Heltec board? The disk is saved first; unsaved work on the Mac is lost.'))return;
+ try{await post('/api/reboot')}catch(e){}msg('Restarting the board...');waitForBoard()};
 $('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The disk is saved first. Press PRG (or RST) on the board to wake it.'))return;
  try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press PRG (or RST) on the board to wake it; this page reconnects by itself.');
  await new Promise(r=>setTimeout(r,4000));

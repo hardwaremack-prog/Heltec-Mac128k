@@ -156,7 +156,8 @@ Meshtastic's.
 
 ### Sleep
 
-**Sleep board** (next to Restart Mac) saves the disk, switches off the screen, Wi-Fi and LED,
+**Restart board** restarts the whole Heltec, like pressing RST (the disk is saved first).
+**Sleep board** (next to it) saves the disk, switches off the screen, Wi-Fi and LED,
 and puts the Heltec into deep sleep. Press **PRG** (or RST) on the board to wake it. The page
 waits and reconnects by itself, and the Mac starts once you're watching, so you hear the chime.
 

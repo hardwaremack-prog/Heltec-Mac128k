@@ -339,6 +339,7 @@ static void setupWeb() {
     web.send(200, "application/json", j);
   });
 
+  web.on("/api/reboot", HTTP_POST, [] { web.send(200, "text/plain", "ok"); pauseEmu(); restartAt = millis() + 400; });
   web.on("/api/sleep", HTTP_POST, [] { sleepAt = millis() + 400; web.send(200, "text/plain", "ok"); });
   web.on("/api/reset", HTTP_POST, [] { cmdReset = true; web.send(200, "text/plain", "ok"); });
   web.on("/api/turbo", HTTP_POST, [] { mac.setTurbo(web.arg("on") == "1"); web.send(200, "text/plain", "ok"); });
