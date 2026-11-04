@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <chrono>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -155,6 +156,8 @@ static std::vector<uint8_t> testRom(uint32_t ramBytes, bool sound) {
   return r;
 }
 
+static std::atomic<int> pendingUse{-99};   // /api/use from the web thread, done in the main loop
+
 int main(int argc, char** argv) {
   std::string romFile, dump;
   std::vector<std::string> diskFiles;
@@ -280,6 +283,8 @@ int main(int argc, char** argv) {
       printf("Browser connected: starting the Mac\n"); fflush(stdout);
     }
     while (!quit) {
+      int u = pendingUse.exchange(-99);
+      if (u != -99) { bool ok = mac.useDisk(u); if (ok) mac.reset(); printf("Use disk %d: %s, Mac reset\n", u, ok ? "OK" : "no such disk"); fflush(stdout); }
       int64_t s = mac.step(now());
       if (s > 0) usleep(s > 2000 ? 2000 : s);
     }
@@ -299,6 +304,7 @@ int main(int argc, char** argv) {
       if (r.find("GET /macfiles.js") == 0) { body = MACFILES_JS; type = "application/javascript"; }
       else if (r.find("GET /sit-arsenic.js") == 0) { body = SIT_ARSENIC_JS; type = "application/javascript"; }
       else if (r.find("GET /imagewriter.js") == 0) { body = IMAGEWRITER_JS; type = "application/javascript"; }
+      else if (r.find("POST /api/use?i=") == 0) { pendingUse = atoi(r.c_str() + 16); body = "ok"; type = "text/plain"; }
       else if (r.find("GET /api/status") == 0) {
         // same fields as the board's /api/status (no Wi-Fi or heap on a PC)
         const MacMeta& mm = mac.meta();

@@ -309,17 +309,17 @@ function renderLib(s){const L=s.lib||[];
  $('lib').innerHTML=L.length?L.map(d=>'<div class="disk'+(d.i==s.active?' cur':'')+'"><div class="nm"><b>'+esc(d.n.replace(/\.img$/i,''))+'</b><br><span class="mute">'+kb(d.s)+(d.d?' &middot; '+esc(d.d):'')+'</span></div>'+
   (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'"'+(pendingDel==d.i?' class="sure">Sure?':'>Remove')+'</button></div>').join(''):
   '<p class="mute">No disks yet. Add one below.</p>';
- if(L.length)$('lib').innerHTML+='<div class="disk'+(s.active<0?' cur':'')+'"><div class="nm"><b>No disk</b><br><span class="mute">Starts the Mac with an empty drive (the blinking question-mark disk)</span></div>'+(s.active<0?'':'<button data-use="-1">Use</button>')+'</div>';
+ if(L.length)$('lib').innerHTML+='<div class="disk'+(s.active<0?' cur':'')+'"><div class="nm"><b>No disk</b><br><span class="mute">Starts the Mac with an empty drive: it waits at a floppy icon, like a real Mac with no disk in</span></div>'+(s.active<0?'':'<button data-use="-1">Use</button>')+'</div>';
  $('libFree').textContent=kb(s.libFree||0)+' free for more disks'}
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
- if(u!==undefined){await post('/api/use?i='+u);msg(u=='-1'?'Restarting the Mac with no disk...':'Restarting the Mac with that disk...');waitForBoard()}
+ if(u!==undefined){try{await post('/api/use?i='+u);msg(u=='-1'?'The Mac restarted with no disk.':'The Mac restarted from that disk.');setTimeout(()=>msg(''),4000)}catch(err){msg(err.message,1)}status()}
  if(d!==undefined){clearTimeout(pendingTimer);
   if(pendingDel!=+d){pendingDel=+d;renderLib(lastStatus);pendingTimer=setTimeout(()=>{pendingDel=-1;renderLib(lastStatus)},4000);return}
   pendingDel=-1;const wasActive=+d==lastStatus.active;
   e.target.disabled=true;e.target.textContent='Removing...';
   msg('Removing... the board moves your other disks down to free the space, so this can take a few seconds.');
   try{await post('/api/libdel?i='+d);
-   if(wasActive){msg('Removed. The Mac is restarting without a disk.');waitForBoard();return}
+   if(wasActive){msg('Removed. The Mac restarted with no disk.');status();return}
    msg('Removed. The space is free again.')}catch(err){msg(err.message,1)}status()}};
 function diskLabel(d){const i=d.info;return esc(d.name.split('/').pop())+' &middot; '+Math.round(i.size/1024)+' KB'+(i.fs?' '+i.fs:'')+(i.vol?' &ldquo;'+esc(i.vol)+'&rdquo;':'')+(i.bootable?'':' &middot; not a startup disk')}
 function diskWarning(d){const i=d.info;
@@ -360,7 +360,7 @@ $('progAdd').onclick=async()=>{const i=lastStatus.active;if(i<0)return;
   await post('/api/disk?replace='+i,fd);$('progPick').hidden=true;
   msg('Added '+added.join(', ')+'. The Mac is restarting; open the disk to find '+(added.length>1?'them':'it')+'.');waitForBoard()}
  catch(e){msg(e.message,1)}};
-$('diskRO').onclick=async()=>{await post('/api/diskro?on='+(lastStatus.diskRO?0:1));msg('Write-protect changed - restarting the Mac');status()};
+$('diskRO').onclick=async()=>{await post('/api/diskro?on='+(lastStatus.diskRO?0:1));msg('Write-protect changed; the Mac restarted.');status()};
 $('ramSet').onclick=async()=>{await post('/api/ram?kb='+$('ram').value);msg('Restarting the board...');waitForBoard()};
 $('turbo').onclick=async()=>{await post('/api/turbo?on='+(lastStatus.turbo?0:1));status()};
 $('scan').onclick=async()=>{$('scan').textContent='Scanning...';const l=await (await fetch('/api/scan')).json();

@@ -79,6 +79,18 @@ void    scc_init(struct scc_cb *cb)
 {
         if (cb)
                 scc_callbacks = *cb;
+        /* Heltec-Mac: start from a clean chip (scc_init also runs on a Mac restart) */
+        scc_reg_ptr = scc_mie = scc_read_acks = scc_status_hi = 0;
+        scc_ie[0] = scc_ie[1] = 0;
+        scc_irq_pending = 0;
+        scc_vec = 0;
+        scc_txie[0] = scc_txie[1] = 0;
+        scc_txbe[0] = scc_txbe[1] = 1;
+        scc_txheld[0] = scc_txheld[1] = -1;
+        scc_dcd_a_changed = scc_dcd_b_changed = 0;
+        if (scc_irq && scc_callbacks.irq_set)
+                scc_callbacks.irq_set(0);
+        scc_irq = 0;
 }
 
 void    scc_set_dcd(int a, int b)

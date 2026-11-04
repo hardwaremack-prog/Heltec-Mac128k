@@ -160,8 +160,11 @@ One browser at a time can view the Mac. Opening it somewhere else takes over.
 | A loose program inside any of these | **Add to the disk in use** copies it onto that disk |
 | An 800K HFS disk with no System on it (a game or app disk) | Its programs are pulled out and offered for **Add to the disk in use** |
 
-- **No disk** (at the end of the list) starts the Mac with an empty drive: the blinking
-  question-mark disk, as on a real Mac with no floppy in.
+- **No disk** (at the end of the list) starts the Mac with an empty drive. It waits at a
+  floppy icon, as a real Mac does with no disk in.
+- **Use**, **No disk**, **Write-protect** and removing the disk in use restart only the Mac,
+  not the board, so Wi‑Fi and the hotspot stay up and your browser stays connected. Adding
+  disks and ROMs still restarts the board.
 - **Download** saves a disk, with everything you've changed, back to your computer.
 - **Remove** deletes a disk and gives its space back. The disks after it slide down in flash,
   which can take a few seconds.

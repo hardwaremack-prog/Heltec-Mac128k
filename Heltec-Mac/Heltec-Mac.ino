@@ -308,6 +308,14 @@ static void pauseEmu() {
   for (int i = 0; i < 400 && !paused; i++) delay(5);
 }
 static void resumeEmu() { pauseReq = false; }
+static void refreshDiskInfo();
+// Switching disks restarts only the Mac (like its reset switch), not the board, so Wi-Fi and
+// the hotspot stay up and the browser stays connected. Call with the Mac paused.
+static void restartMacOnly() {
+  refreshDiskInfo();
+  cmdReset = true;   // the emulator task resets the Mac with the new disk in the drive
+  resumeEmu();
+}
 
 // Deep sleep: save the disk, switch off the screen, radio and LED, and wait for the PRG button
 // (or RST). Waking up is a normal start; the Mac then waits for a browser so you hear the chime.
@@ -416,13 +424,13 @@ static void setupWeb() {
     pauseEmu();
     mac.setDiskRO(web.arg("on") == "1");
     web.send(200, "text/plain", "ok");
-    restartAt = millis() + 500;
+    restartMacOnly();
   });
   web.on("/api/eject", HTTP_POST, [] {
     pauseEmu();
     mac.ejectDisk();
     web.send(200, "text/plain", "ok");
-    restartAt = millis() + 500;
+    restartMacOnly();
   });
 
   // ---- ROM upload: streamed into flash, checked, then the board restarts
@@ -461,7 +469,7 @@ static void setupWeb() {
     pauseEmu();
     bool ok = mac.useDisk(web.arg("i").toInt());
     web.send(ok ? 200 : 400, "text/plain", ok ? "ok" : "No such disk");
-    restartAt = millis() + 500;
+    if (ok) restartMacOnly(); else resumeEmu();
   });
   web.on("/api/libdel", HTTP_POST, [] {
     int i = web.arg("i").toInt();
@@ -470,7 +478,7 @@ static void setupWeb() {
     bool ok = mac.removeDisk(i);
     refreshDiskInfo();
     web.send(ok ? 200 : 400, "text/plain", ok ? "ok" : "No such disk");
-    if (wasActive) restartAt = millis() + 500; else resumeEmu();
+    if (wasActive) restartMacOnly(); else resumeEmu();
   });
 
   // ---- disk download (the Mac pauses while it streams)

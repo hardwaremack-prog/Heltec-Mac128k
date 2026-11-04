@@ -282,20 +282,23 @@ bool MacMachine::startTest(const uint8_t* testRom, uint32_t bytes) {
 }
 #endif
 
-static void reinsertDisk(MacMachine* mm, uint32_t size, bool ro) {
-  disc_descr_t discs[DISC_NUM_DRIVES];
-  memset(discs, 0, sizeof discs);
-  discs[0].size = size;
-  discs[0].read_only = ro ? 1 : 0;
-  discs[0].op_ctx = mm;
-  discs[0].op_read = cbRead;
-  discs[0].op_write = cbWrite;
-  disc_init(discs);
-}
-
 void MacMachine::reset() {
   flushDisk();
-  if (ram) { reinsertDisk(this, m.diskSize, m.diskRO); umac_reset(); }
+  // Like switching the Mac off and on: clear its memory and set up all of its chips again (not
+  // just the processor), so nothing from the last disk lingers. The clock keeps running.
+  if (ram) {
+    memset(ram, 0, ramSize);
+    disc_descr_t discs[DISC_NUM_DRIVES];
+    memset(discs, 0, sizeof discs);
+    discs[0].size = m.diskSize;
+    discs[0].read_only = m.diskRO ? 1 : 0;
+    discs[0].op_ctx = this;
+    discs[0].op_read = cbRead;
+    discs[0].op_write = cbWrite;
+    umac_init(ram, (void*)rom, discs);
+    umac_set_printer(prnReady, prnOut);
+    umac_reset();
+  }
   macKeys.releaseAll();
 }
 
