@@ -8,9 +8,10 @@ hardware, keeps a library of floppy disks in its own flash, and serves the Mac's
 sound to any browser on your network. There's no app to install: open the board's address on a
 PC, a Raspberry Pi or a phone, and you're at the Finder.
 
-![MacPaint running in the browser on a Heltec V3](docs/heltec-mac.png)
+![The Amazing maze game running in the browser on a Heltec V3](docs/heltec-mac.png)
 
-*MacPaint 1.1 running on the board, viewed in Chrome. Every Mac pixel is drawn as a crisp 2×2 block.*
+*The 1985 maze game Amazing, running on the board and viewed in Chrome. Every Mac pixel is drawn
+as a crisp 2×2 block. Battery level and the board's controls sit right on the page.*
 
 ## Highlights
 
@@ -30,22 +31,33 @@ PC, a Raspberry Pi or a phone, and you're at the Finder.
   get its space back.
 - **Drop in almost any old Mac file.** Disk images (`.img`, `.dsk`, DiskCopy 4.2 `.image`) and
   archives (`.zip`, `.7z`, `.sit` including StuffIt 5, `.hqx`, `.bin`, `.gz`), even nested
-  inside each other. Your browser unpacks them, so the board stays fast. Loose programs, like a
-  copy of Missile Command, can be copied straight onto a disk.
+  inside each other. Your browser unpacks them, so the board stays fast. Loose programs, like
+  Missile Command or Bricks, are copied straight onto the disk you're using, and programs on
+  800K disks that this Mac can't read are pulled off and copied over too. Add the same program
+  again and it replaces the old copy.
 - **Your choice of ROM.** Works with the original Mac 128K/512K ROM (recommended) or the
   Mac Plus ROM. ROMs aren't included; bring your own.
+- **Board controls on the page.** Battery level, how long the board has been up and why it last
+  started, plus **Restart Mac**, **Restart board** and **Sleep board** buttons. Sleep turns
+  everything off until you press PRG.
+- **Works anywhere.** On your home Wi‑Fi, or straight from the board's own hotspot when there's
+  no network around.
 - **One-page flasher.** Flash it from Chrome or Edge with a single HTML file. No tools to install.
-  It can also back up a whole board to a file and restore or clone it.
+  It also backs up a whole board to one file, and restores or clones it onto another board.
 - **Extras.** VNC on port 5900, a status display on the board's OLED (or a tiny live view of the
   Mac screen), and a safe mode that keeps the page reachable if something goes wrong.
 
 | The clock follows your computer | Games, with sound |
 |---|---|
 | ![Control Panel showing the current date and time](docs/clock.png) | ![Missile Command](docs/missile-command.png) |
+| **Programs copied onto a System disk** | **Bricks, added from a StuffIt 5 archive** |
+| ![The Finder showing Bricks and Amazing on the System Disk](docs/finder.png) | ![Bricks running](docs/bricks.png) |
 
 ![The disk library on the board's web page](docs/disk-library.png)
 
-*The disk library: six original 1984 disks stored on the board, one click to start from any of them.*
+*The disk library: five disks stored on the board, one click to start from any of them, or
+from no disk at all. Here Amazing.zip (an 800K disk) was just opened, and its program is
+ready to copy onto the disk in use.*
 
 ## What you need
 
@@ -66,16 +78,17 @@ it from the list, and click **Flash**. The page checks the write and restarts th
 anything goes wrong, the page walks you through the usual fixes (USB driver, cable, download
 mode), and **Watch the board start** shows the board's own startup log.
 
-![The Heltec-Mac Flasher](docs/flasher.png)
+![The Heltec-Mac Flasher, with the backup and clone section](docs/flasher.png)
 
 Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin`
 
 Updating later keeps your ROM, disks and Wi‑Fi settings.
 
 **Back up or clone.** After **Connect**, **Back up this board** saves the whole 8 MB flash
-(firmware, ROM, every disk and the Wi‑Fi settings) as one verified `.bin` file.
-**Write backup to this board** puts it back, or onto a second Heltec V3 to make a clone. The
-file holds your Wi‑Fi password and your ROM, so keep it private.
+(firmware, ROM, every disk and the Wi‑Fi settings) as one `.bin` file, checked against the
+board. When it's done, the flasher offers to disconnect and restart the board for you.
+**Write backup to this board** puts a backup back, or onto a second Heltec V3 to make a clone.
+The file holds your Wi‑Fi password and your ROM, so keep it private.
 
 ### 2. Put it on your Wi‑Fi
 
@@ -84,8 +97,11 @@ Join it, open **http://192.168.4.1**, pick your network under **Wi‑Fi**, and c
 **Save & restart**. The OLED then shows the board's address on your network. It also answers
 to **heltec-mac.local** on most computers.
 
-No Wi‑Fi around? You can also use the Mac straight from the hotspot at http://192.168.4.1.
-Your phone or laptop may say the hotspot has no internet; that's expected, so stay connected.
+No Wi‑Fi around? You can also use the Mac straight from the hotspot: join
+**Heltec-Mac-Setup** and type **http://192.168.4.1** into your browser (the `.local` name
+only works on your home network). Your phone or laptop may say the hotspot has no internet;
+that's expected, so stay connected. In hotspot mode the board turns its Wi‑Fi power down, since
+you're sitting right next to it.
 If the board can't find your saved network when it starts (say you took it somewhere else), it
 starts the hotspot instead. Press RST once you're back in range to join your network again.
 
@@ -119,7 +135,9 @@ Open `http://<board address>` (or `http://heltec-mac.local`) and click the Mac s
   and your choice is remembered.
 - **Pixels:** **Auto** keeps the screen razor sharp when there's room, **Fill** uses all the
   space. **Full screen** gives you just the Mac.
-- **Restart Mac** works like the Mac's reset switch.
+- **Restart Mac** works like the Mac's reset switch. **Restart board** restarts the whole
+  Heltec, like pressing RST. **Sleep board** puts it to sleep (see below). Each one saves the
+  disk first.
 
 One browser at a time can view the Mac. Opening it somewhere else takes over.
 
@@ -148,7 +166,14 @@ System, so it starts straight into the app. Disks for System 4 and later (800K H
 with 512 KB or more, which doesn't fit on this board. Many small 800K game disks are just one
 program, though, and those usually run fine once copied onto a 400K System disk.
 
-### Battery
+### Status, battery and sleep
+
+<img src="docs/status.png" alt="The Status panel" width="372" align="right">
+
+The **Status** panel shows whether the Mac is running and at what speed, who's watching, the
+battery, and how long the board has been up along with why it last started (power on, RST
+button, restart, woke from sleep, crash, watchdog or brownout). If the board ever acts up,
+that line is the first clue.
 
 With a LiPo plugged into the board's battery connector, the OLED's title bar shows its voltage
 and charge (for example `3.9V 72%`), and the web page shows it in the header and Status panel.
@@ -156,12 +181,10 @@ and charge (for example `3.9V 72%`), and the web page shows it in the header and
 connected. The reading is a rough guide: it comes from the board's voltage divider, like
 Meshtastic's.
 
-### Sleep
-
-**Restart board** restarts the whole Heltec, like pressing RST (the disk is saved first).
-**Sleep board** (next to it) saves the disk, switches off the screen, Wi-Fi and LED,
+**Sleep board** saves the disk, switches off the screen, Wi-Fi and LED,
 and puts the Heltec into deep sleep. Press **PRG** (or RST) on the board to wake it. The page
 waits and reconnects by itself, and the Mac starts once you're watching, so you hear the chime.
+<br clear="right">
 
 ### Clock
 
@@ -222,6 +245,10 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
   again. Choose **Slow** speed in the flasher.
 - **Stuck on "JOINING WIFI..." or restarting:** flash the latest version. To see why, use
   **Watch the board start** in the flasher.
+- **The Mac freezes or the page drops off:** look at **Up** in the Status panel. "brownout"
+  means the board's power dipped: try another USB port or cable, or charge the battery.
+  "crash" or "watchdog" is a bug; the log from **Watch the board start** helps find it.
+- **Remove** asks **Sure?** first: click it again within 4 seconds.
 - **"There is not enough room in memory":** use the Mac 128K ROM instead of the Plus ROM.
 - **No sound:** click the Mac screen once (browsers need a click before playing sound) and check
   that the **Sound** button says **on**.
