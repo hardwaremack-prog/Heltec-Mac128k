@@ -270,6 +270,16 @@ $('backup').onclick = async () => {
     a.download = `heltec-mac-backup-${stamp}.bin`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     set('backupMsg', `Backup saved as ${a.download} (${mb} MB, verified). The board is untouched.`, 'ok');
+    busy(false);
+    await new Promise(r => setTimeout(r, 600));   // let the download start first
+    if (confirm(`Backup complete!\n\nSaved as ${a.download} (${mb} MB, verified).\n\nDisconnect from the board now? It restarts and runs Heltec-Mac as usual.`)) {
+      try { await restartBoard(transport.device); } catch {}
+      try { await transport.disconnect(); } catch {}
+      transport = loader = null; connButtons(false);
+      set('backupMsg', `Backup saved as ${a.download} (${mb} MB, verified). Disconnected; the board is restarting.`, 'ok');
+      set('connMsg', 'Disconnected.');
+    }
+    return;
   } catch (e) {
     log('Backup failed: ' + (e.message || e));
     set('backupMsg', 'The backup stopped: ' + (e.message || e) + '. Try Slow speed, reconnect and try again.', 'bad');
