@@ -86,9 +86,8 @@ to **heltec-mac.local** on most computers.
 
 No Wi‑Fi around? You can also use the Mac straight from the hotspot at http://192.168.4.1.
 Your phone or laptop may say the hotspot has no internet; that's expected, so stay connected.
-If the board can't find your saved network (say you took it somewhere else), it starts the
-hotspot. Every couple of minutes, while nobody is on the hotspot, it checks for your network
-again and switches back once it's in range.
+If the board can't find your saved network when it starts (say you took it somewhere else), it
+starts the hotspot instead. Press RST once you're back in range to join your network again.
 
 ### 3. Add a ROM
 

@@ -436,7 +436,9 @@ static void setupWeb() {
 
   // ---- Wi-Fi
   web.on("/api/scan", HTTP_GET, [] {
+    if (apMode) WiFi.mode(WIFI_AP_STA);   // scanning needs the station side for a moment
     int n = WiFi.scanNetworks();
+    if (apMode) WiFi.mode(WIFI_AP);
     String j = "[";
     for (int i = 0; i < n; i++) j += String(i ? "," : "") + "{\"s\":\"" + jsonEsc(WiFi.SSID(i)) + "\",\"r\":" + String(WiFi.RSSI(i)) + "}";
     j += "]";
@@ -475,20 +477,9 @@ static void netTask(void*) {
   uint32_t btnDown = 0;
   bool btnHeld = false, cleanMarked = false;
   uint32_t lastNtp = 0;
-  uint32_t apRetryAt = millis() + 120000, apTryUntil = 0;
   for (;;) {
     if (apMode) {
       dns.processNextRequest();
-      // Brought back home? Every 2 minutes, while nobody is on the hotspot, try the saved network
-      // for 12 s; if it answers, restart onto it.
-      uint32_t t = millis();
-      if (apTryUntil) {
-        if (WiFi.status() == WL_CONNECTED) { Serial.println("Saved Wi-Fi is back - restarting onto it"); restartAt = t + 200; apTryUntil = 0; }
-        else if ((int32_t)(t - apTryUntil) >= 0 || WiFi.softAPgetStationNum()) { WiFi.disconnect(false, false); apTryUntil = 0; apRetryAt = t + 120000; }
-      } else if (savedSsid.length() && (int32_t)(t - apRetryAt) >= 0) {
-        if (WiFi.softAPgetStationNum() == 0) { WiFi.begin(savedSsid.c_str(), savedPass.c_str()); apTryUntil = t + 12000; }
-        else apRetryAt = t + 120000;
-      }
     }
     // internet time: once it arrives, and every 6 hours (only if we know your time zone)
     if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
@@ -573,8 +564,8 @@ void setup() {
     // Stop the station side from hunting for the saved network: every retry hops channels,
     // which knocks phones and laptops off the hotspot and stalls the web page.
     WiFi.setAutoReconnect(false);
-    WiFi.disconnect(false, false);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
     WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 4);
     // Answer every name with 192.168.4.1 and tell phones "internet is fine", so they stay on
