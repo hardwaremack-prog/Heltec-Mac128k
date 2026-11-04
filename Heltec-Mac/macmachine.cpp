@@ -194,6 +194,18 @@ bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* buf) {
   return ok;
 }
 
+// ---- printer port: single-producer (emulator core) / single-consumer (network core) ring
+static const uint32_t PRN_SIZE = 1024;
+static uint8_t prnBuf[PRN_SIZE];
+static volatile uint32_t prnHead = 0, prnTail = 0;
+static int prnReady() { return ((prnHead + 1) % PRN_SIZE) != prnTail; }
+static void prnOut(uint8_t b) { prnBuf[prnHead] = b; __sync_synchronize(); prnHead = (prnHead + 1) % PRN_SIZE; }
+int MacMachine::printerRead(uint8_t* out, int max) {
+  int n = 0;
+  while (n < max && prnTail != prnHead) { out[n++] = prnBuf[prnTail]; __sync_synchronize(); prnTail = (prnTail + 1) % PRN_SIZE; }
+  return n;
+}
+
 bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::string& why) {
   if (!m.romOk) { why = "No Mac Plus ROM yet - upload one on the web page."; return false; }
 
@@ -236,6 +248,7 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   discs[0].op_read = cbRead;
   discs[0].op_write = cbWrite;
   umac_init(ram, (void*)rom, discs);
+  umac_set_printer(prnReady, prnOut);
   if (m.clockFlags & 1) memcpy(umac_rtc_pram(), m.pram, 20);
   umac_rtc_pram_dirty();
   if (!clockSet && m.lastTime) umac_rtc_set(m.lastTime);   // a guess until the browser or internet says
@@ -263,6 +276,7 @@ bool MacMachine::startTest(const uint8_t* testRom, uint32_t bytes) {
   disc_descr_t discs[DISC_NUM_DRIVES];
   memset(discs, 0, sizeof discs);
   umac_init(ram, (void*)rom, discs);
+  umac_set_printer(prnReady, prnOut);
   timeInit = false;
   return true;
 }

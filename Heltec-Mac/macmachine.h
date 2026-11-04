@@ -107,6 +107,9 @@ class MacMachine {
   volatile bool audioWanted = false;              // a browser has sound turned on
   bool popAudio(uint8_t out[AUDIO_BYTES]);        // network thread
   int audioQueued() const { return (aHead - aTail + AUDIO_FRAMES) % AUDIO_FRAMES; }
+  // Printer port: the Mac's ImageWriter output, read by the network thread and sent to the
+  // browser (which turns it into a PDF). When this 1 KB buffer is full the Mac simply waits.
+  int printerRead(uint8_t* out, int max);
 
   // Input (thread-safe: may be called from the network thread)
   void mouse(int x, int y, bool button);

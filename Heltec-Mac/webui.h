@@ -21,6 +21,7 @@ button,.btn{font:inherit;padding:7px 13px;border:1px solid var(--line);border-ra
 button:hover{border-color:var(--accent)}button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}button.sure{background:var(--bad);color:#fff;border-color:var(--bad)}
 .hint{color:var(--mute);font-size:13px;text-align:center}
+#prn{display:none;margin:10px auto 0;max-width:640px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px}#prn.on{display:block}#prn .job{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:4px 0}#prn .job b{flex:1 1 200px}#prn .job+.job{border-top:1px solid var(--line)}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 h2{margin:0 0 8px;font-size:16px}p{margin:6px 0}.mute{color:var(--mute)}.bad{color:var(--bad)}.ok{color:#2d6a2d}
@@ -49,6 +50,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bSleep" title="Puts the Heltec board into deep sleep. Press PRG (or RST) on the board to wake it.">Sleep board</button>
  </div>
  <div class="hint">Click the screen to type. Ctrl or Windows key = Command, Alt = Option. Browsers keep Ctrl+W/T/N for themselves, so use the &#8984; button for those.</div>
+ <div id="prn" aria-live="polite"></div>
  <input id="kbd" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
 </div>
 <div class="grid">
@@ -92,6 +94,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 </main>
 <script src=")HTML" SIT_ARSENIC_JS_URL R"HTML("></script>
 <script src=")HTML" MACFILES_JS_URL R"HTML("></script>
+<script src=")HTML" IMAGEWRITER_JS_URL R"HTML("></script>
 <script>
 const $=id=>document.getElementById(id);
 const W=512,H=342,cv=$('scr'),cx=cv.getContext('2d'),img=cx.createImageData(W,H);
@@ -118,7 +121,8 @@ function connect(){
      let o=(y*W+tx*16)*4;for(let b=0;b<16;b++){const c=(v&(0x8000>>b))?0:255;img.data[o]=img.data[o+1]=img.data[o+2]=c;o+=4}}
     minY=Math.min(minY,ty*16);maxY=Math.max(maxY,ty*16+16)}
    cx.putImageData(img,0,0,0,minY,W,Math.min(H,maxY)-minY);send([0x41])}
-  else if(d[0]==0x53)audio.bundle(d)}}
+  else if(d[0]==0x53)audio.bundle(d)
+  else if(d[0]==0x52)printer.data(d.subarray(1))}}
 function send(a){if(wsOk&&ws.readyState==1)ws.send(new Uint8Array(a))}
 function reconnect(){const old=ws;wsOk=false;if(old){old.onclose=null;old.onmessage=null;try{old.close()}catch(e){}}
  $('dot').style.background='#c44';connect()}
@@ -128,6 +132,26 @@ setInterval(()=>{if(!wsOk||document.hidden)return;const now=Date.now();
 // Set the Mac's clock to this computer's local time (Mac time counts seconds from 1 Jan 1904)
 function sendClock(){const d=new Date(),tz=-d.getTimezoneOffset(),t=Math.floor(d.getTime()/1000)+tz*60+2082844800;
  send([0x43,(t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255,(tz>>8)&255,tz&255])}
+// ---------- printer: the Mac prints to an ImageWriter; the board passes the bytes on, and
+// this page turns each job into a PDF (web/imagewriter.js) once the Mac stops sending
+const printer={chunks:[],bytes:0,timer:0,jobs:[],
+ data(b){this.chunks.push(b.slice());this.bytes+=b.length;clearTimeout(this.timer);this.timer=setTimeout(()=>this.finish(),5000);this.show()},
+ async finish(){const all=new Uint8Array(this.bytes);let o=0;for(const c of this.chunks){all.set(c,o);o+=c.length}
+  this.chunks=[];this.bytes=0;
+  try{const job=ImageWriter.render(all),d=new Date(),p=n=>String(n).padStart(2,'0');
+   const name='Mac printout '+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+'.'+p(d.getMinutes())+'.'+p(d.getSeconds())+'.pdf';
+   const pdf=await ImageWriter.toPDF(job,name.replace(/\.pdf$/,''));
+   const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
+   this.jobs.unshift({name,url,pages:job.pages.length});
+   while(this.jobs.length>4)URL.revokeObjectURL(this.jobs.pop().url)}
+  catch(e){this.jobs.unshift({error:e.message||String(e)})}
+  this.show()},
+ show(){const el=$('prn');el.classList.toggle('on',this.bytes>0||this.jobs.length>0);
+  let h=this.bytes?'<div class="job"><b>&#128424; Printing... '+Math.round(this.bytes/1024)+' KB received</b></div>':'';
+  h+=this.jobs.map((j,i)=>j.error?'<div class="job"><b>Couldn\'t make that printout: '+esc(j.error)+'</b></div>':
+   '<div class="job"><b>&#128424; '+esc(j.name.replace(/\.pdf$/,''))+' &middot; '+j.pages+' page'+(j.pages>1?'s':'')+'</b><a class="btn" href="'+j.url+'" target="_blank" rel="noopener">Open PDF</a><a class="btn" href="'+j.url+'" download="'+esc(j.name)+'">Download</a></div>').join('');
+  if(this.jobs.length)h+='<div class="job"><span class="mute" style="flex:1">Printed from the Mac (File &gt; Print). PDFs stay here until you close this page.</span><button id="prnClear">Clear</button></div>';
+  el.innerHTML=h;const c=$('prnClear');if(c)c.onclick=()=>{for(const j of this.jobs)if(j.url)URL.revokeObjectURL(j.url);this.jobs=[];this.show()}}};
 connect();
 
 // ---------- sound: Mac Plus = 370 samples per frame (~22.2 kHz), 8-bit unsigned

@@ -23,6 +23,9 @@ as a crisp 2×2 block. Battery level and the board's controls sit right on the p
   game sounds come through. It's on by default and starts at your first click. When you add a
   ROM or switch disks, the board waits for your browser to reconnect before switching the Mac
   on, so you hear its startup sound.
+- **Print to PDF.** Choose **File > Print** in MacWrite, MacPaint or any other app, and the
+  page hands you a PDF. The board emulates the Mac's printer port, and your browser acts as an
+  Apple ImageWriter, in Draft, Standard or High quality.
 - **A clock that knows the time.** The Mac's clock chip is emulated and set from your
   computer's time when you open the page. With no browser open, the board keeps time from the
   internet in your time zone. Control Panel settings like volume and mouse speed are saved too.
@@ -166,6 +169,24 @@ System, so it starts straight into the app. Disks for System 4 and later (800K H
 with 512 KB or more, which doesn't fit on this board. Many small 800K game disks are just one
 program, though, and those usually run fine once copied onto a 400K System disk.
 
+### Printing to PDF
+
+![MacWrite's Sample Memo printed to a PDF](docs/print-pdf.png)
+
+Print the way you would on a real Mac: **File > Print**, pick the quality, click **OK**. The
+Mac thinks an Apple ImageWriter is plugged into its printer port. The board passes what the
+Mac sends to your browser, and when the Mac finishes, a box under the screen offers
+**Open PDF** and **Download**. The file is named with the date and time, like
+`Mac printout 2026-11-04 01.28.04.pdf`.
+
+- **High** and **Standard** quality print the page as a picture, just as the ImageWriter did
+  (High is sharper and takes longer).
+- **Draft** prints real text in Courier, so you can search and copy it in the PDF.
+- Pages are US Letter. Each print job becomes one PDF, with every page in it.
+- Keep the page open while printing. If no browser is connected, the Mac waits; open the page
+  and printing carries on.
+- The PDFs live in your browser until you close the page, so download the ones you want to keep.
+
 ### Status, battery and sleep
 
 <img src="docs/status.png" alt="The Status panel" width="372" align="right">
@@ -215,6 +236,9 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
 - **Core 1** runs the Mac: the Musashi 68000 emulator plus the Mac's hardware (video, sound,
   keyboard, mouse, clock chip, floppy drive), based on the umac emulator. It runs at the speed
   of a real 8 MHz Mac.
+- **Printing:** the Mac's serial chip (SCC) sends whatever the Mac prints out of its printer
+  port. The board passes those bytes to the browser, and `web/imagewriter.js` reads the
+  ImageWriter commands, draws the pages at 144 dpi and writes the PDF.
 - **Core 0** runs Wi‑Fi, the web page, the WebSocket stream and VNC. The screen is sent as
   16×16 blocks, and only the blocks that changed. Sound goes out in small bundles, and silence
   costs nothing.
@@ -230,7 +254,7 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
 - The Mac has 128 KB of RAM, because that's what the board can spare. System 1 to 3 software
   runs; System 4 and later doesn't. A board with PSRAM (extra memory) would allow a bigger Mac.
 - One floppy drive. To switch disks, pick another one in the library, and the Mac restarts.
-- No serial ports, printer, AppleTalk or SCSI.
+- No modem port, AppleTalk or SCSI. The printer port only talks to the built-in PDF printer.
 - The emulation isn't cycle-exact, so a few timing-sensitive programs may run or sound slightly
   differently.
 - Browser sound lags about 0.1 to 0.3 seconds behind the picture, to ride out Wi‑Fi hiccups.
@@ -263,7 +287,7 @@ folder sets up the app, the ROM area and the disk library. No extra libraries ar
 |---|---|
 | `Heltec-Mac/` | The firmware: emulator glue, web page, WebSocket view, VNC, disk library |
 | `Heltec-Mac/src/core/` | The emulator core (umac + Musashi) with Heltec-Mac's changes |
-| `web/` | The browser-side unpackers (`macfiles.js`, `sit-arsenic.js`) and a WebAssembly build |
+| `web/` | The browser-side unpackers (`macfiles.js`, `sit-arsenic.js`), the virtual ImageWriter (`imagewriter.js`) and a WebAssembly build |
 | `flasher/` | The one-page flasher and the script that builds it from the firmware |
 | `host/` | A PC build of the same emulator and web page, plus tests |
 | `firmware/` | The ready-to-flash firmware image |
@@ -277,6 +301,7 @@ cd host && ./build.sh
 ```
 
 After changing `web/*.js`, run `python3 tools/embed_js.py` to rebuild the copy the board serves.
+`PRINTFILE=print.bin ./machost ...` saves whatever the Mac prints to a file, for testing.
 After changing the firmware, `flasher/make_flasher.py` rebuilds the flasher page.
 
 ## Credits and licences
@@ -285,7 +310,8 @@ Heltec-Mac stands on the shoulders of some wonderful projects:
 
 - **umac** by Matt Evans (MIT, `licenses/umac-LICENSE.txt`), the compact Mac emulator at the
   heart of this. Heltec-Mac adds runtime memory sizing, sound output, an absolute mouse, the
-  clock chip with parameter RAM, Mac 128K ROM support, a disk library and more.
+  clock chip with parameter RAM, a working printer port, Mac 128K ROM support, a disk library and
+  more.
 - **Musashi** 68000 emulator by Karl Stenerud (MIT-style, `licenses/Musashi-LICENSE.txt`), with
   **SoftFloat** by John R. Hauser (`licenses/SoftFloat-README.txt`).
 - The replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II** by

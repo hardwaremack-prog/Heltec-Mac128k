@@ -29,8 +29,8 @@
 
 #include "scc.h"
 
-#ifdef DEBUG
-#define SDBG(...)       printf(__VA_ARGS__)
+#if defined(DEBUG) || defined(SCC_TRACE)
+#define SDBG(...)       fprintf(stderr, __VA_ARGS__)
 #else
 #define SDBG(...)       do {} while(0)
 #endif
@@ -53,7 +53,15 @@ static uint8_t scc_ie[2] = {0};
 #define SCC_IE_ABORT            0x80
 static uint8_t scc_irq_pending = 0;
 #define SCC_IP_B_EXT            0x01
+#define SCC_IP_B_TX             0x02
 #define SCC_IP_A_EXT            0x08
+#define SCC_IP_A_TX             0x10
+
+/* Heltec-Mac: transmitter, per channel (index = AnB: 0 = B, 1 = A) */
+static uint8_t scc_txie[2] = {0};       // WR1 bit 1
+static uint8_t scc_txbe[2] = {1, 1};    // Tx buffer empty
+static int     scc_txheld[2] = {-1, -1}; // byte waiting for the host
+static const uint8_t scc_ip_tx[2] = {SCC_IP_B_TX, SCC_IP_A_TX};
 
 static uint8_t scc_vec = 0;
 static uint8_t scc_irq = 0;
@@ -88,7 +96,7 @@ void    scc_set_dcd(int a, int b)
 ////////////////////////////////////////////////////////////////////////////////
 
 // WR0: Reg pointers, command
-static void     scc_wr0(uint8_t data)
+static void     scc_wr0(int AnB, uint8_t data)
 {
         scc_reg_ptr = data & 7;
 
@@ -102,10 +110,61 @@ static void     scc_wr0(uint8_t data)
         case 1: // Point high
                 scc_reg_ptr |= 8;
                 break;
+        case 5: // Reset Tx interrupt pending
+                scc_irq_pending &= ~scc_ip_tx[AnB];
+                break;
+        case 2: // Reset Ext/Status interrupts
+        case 7: // Reset highest IUS
+                break;
                 // 2: reset Ext/Status IRQs
                 // enables RR0 status to be re-latched (cause IRQ again if sometihng's pending?)
         default:
                 SDBG("(SCC WR0: Command %d unhandled!)\n", cmd);
+        }
+}
+
+// WR1: interrupt enables (bit 1 = Tx interrupt enable)
+static void     scc_wr1(int AnB, uint8_t data)
+{
+        scc_txie[AnB] = !!(data & 0x02);
+        if (!scc_txie[AnB])
+                scc_irq_pending &= ~scc_ip_tx[AnB];
+}
+
+// Transmit: hand the byte to the host now, or hold it until the host has room
+static void     scc_tx_done(int AnB)
+{
+        scc_txbe[AnB] = 1;
+        if (scc_txie[AnB])
+                scc_irq_pending |= scc_ip_tx[AnB];
+}
+
+static void     scc_tx_byte(int AnB, uint8_t data)
+{
+        if (scc_callbacks.tx_ready && !scc_callbacks.tx_ready(AnB)) {
+                scc_txheld[AnB] = data;
+                scc_txbe[AnB] = 0;
+                scc_irq_pending &= ~scc_ip_tx[AnB];
+                return;
+        }
+        if (scc_callbacks.tx)
+                scc_callbacks.tx(AnB, data);
+        scc_irq_pending &= ~scc_ip_tx[AnB];
+        scc_tx_done(AnB);
+}
+
+void    scc_poll(void)
+{
+        for (int c = 0; c < 2; c++) {
+                if (scc_txheld[c] < 0)
+                        continue;
+                if (scc_callbacks.tx_ready && !scc_callbacks.tx_ready(c))
+                        continue;
+                if (scc_callbacks.tx)
+                        scc_callbacks.tx(c, (uint8_t)scc_txheld[c]);
+                scc_txheld[c] = -1;
+                scc_tx_done(c);
+                scc_assess_irq();
         }
 }
 
@@ -159,6 +218,10 @@ static uint8_t  scc_rr0(int AnB)
         // (Other bits: [2] = TX empty, [5] = /CTS)
         v |= 0x10; // Sync/Hunt status (set on reset/by hunt?)
         v |= 0x40; // TxUnderrun/EOM
+        if (scc_txbe[AnB])
+                v |= 0x04; // Tx buffer empty
+        /* CTS (bit 5) stays clear: the Mac's handshake input is inverted, and
+         * the ImageWriter driver reads 0 here as "printer ready" */
 
         return v;
 }
@@ -183,17 +246,21 @@ static uint8_t  scc_rr2(int AnB)
         //status high shift << 3
         // B external = 001
         // A external = 101
-        uint8_t v = 0;
-        if (scc_irq_pending & SCC_IP_A_EXT) {
+        // Priority: A Tx > A Ext > B Tx > B Ext.  Tx pending is cleared by
+        // writing data or WR0 'reset Tx IP', not by reading the vector.
+        uint8_t v;
+        if (scc_irq_pending & SCC_IP_A_TX) {
+                v = 4;
+        } else if (scc_irq_pending & SCC_IP_A_EXT) {
                 v = 5;
-
                 scc_irq_pending &= ~SCC_IP_A_EXT;
+        } else if (scc_irq_pending & SCC_IP_B_TX) {
+                v = 0;
         } else if (scc_irq_pending & SCC_IP_B_EXT) {
                 v = 1;
-
                 scc_irq_pending &= ~SCC_IP_B_EXT;
         } else {
-                v = 0; // 3:1 011 or 6:4 110
+                v = 3; // nothing pending
         }
         // VIS
 
@@ -260,14 +327,18 @@ void    scc_write(unsigned int address, uint8_t data)
         SDBG("[SCC: Write %x %02x]: ", address, data);
 
         if (DnC) {
-                SDBG("[SCC: Data write (%c) ignored]\n", 'B' - AnB);
+                scc_tx_byte(AnB, data);
         } else {
                 SDBG("[SCC: WR %02x -> WR%d%c]\n",
                      data, scc_reg_ptr, 'B' - AnB);
 
                 switch (scc_reg_ptr) {
                 case 0:
-                        scc_wr0(data);
+                        scc_wr0(AnB, data);
+                        break;
+                case 1:
+                        scc_wr1(AnB, data);
+                        scc_reg_ptr = 0;
                         break;
                 case 2:
                         scc_wr2(data);

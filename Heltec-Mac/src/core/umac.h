@@ -46,6 +46,8 @@ uint32_t umac_rtc_get(void);
 uint8_t *umac_rtc_pram(void);            /* 20 bytes of parameter RAM */
 int      umac_rtc_pram_dirty(void);      /* 1 if PRAM changed since the last call */
 void     umac_set_time_now(uint32_t mac_seconds);
+/* Printer port (serial port B): ready() == 0 makes the Mac wait; out() gets each byte */
+void     umac_set_printer(int (*ready)(void), void (*out)(uint8_t b));
 
 static inline void      umac_vsync_event(void)
 {

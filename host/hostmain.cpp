@@ -221,6 +221,10 @@ int main(int argc, char** argv) {
     else printf("Mac started with %u KB RAM\n", mac.ramBytes() / 1024);
     umac_rtc_set(macNow());
   }
+  if (getenv("PRINTFILE")) {   // test hook: printer port bytes to a file
+    static FILE* pf = fopen(getenv("PRINTFILE"), "wb");
+    umac_set_printer([] { return 1; }, [](uint8_t b) { fputc(b, pf); fflush(pf); });
+  }
 
   VncServer vnc;
   WebView web;
@@ -233,6 +237,7 @@ int main(int argc, char** argv) {
   web.onAudio = [](bool on) { mac.audioWanted = on; };
   web.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
   web.audioPending = [] { return mac.audioQueued(); };
+  web.nextPrint = [](uint8_t* b, int max) { return mac.printerRead(b, max); };
   web.onClock = [](uint32_t t, int tz) { mac.setClock(t, tz, true); printf("Clock set from the browser (UTC%+d min)\n", tz); };
 
   auto t0 = std::chrono::steady_clock::now();
@@ -293,6 +298,7 @@ int main(int argc, char** argv) {
       std::string r(req), body, type = "text/html";
       if (r.find("GET /macfiles.js") == 0) { body = MACFILES_JS; type = "application/javascript"; }
       else if (r.find("GET /sit-arsenic.js") == 0) { body = SIT_ARSENIC_JS; type = "application/javascript"; }
+      else if (r.find("GET /imagewriter.js") == 0) { body = IMAGEWRITER_JS; type = "application/javascript"; }
       else if (r.find("GET /api/status") == 0) {
         // same fields as the board's /api/status (no Wi-Fi or heap on a PC)
         const MacMeta& mm = mac.meta();

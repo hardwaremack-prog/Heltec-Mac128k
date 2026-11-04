@@ -89,6 +89,7 @@ void WebView::poll() {
   }
   while (conn && readFrame()) {}
   if (conn && open && audioOn && nextAudio) sendAudio();
+  if (conn && open && nextPrint) sendPrint();
   if (conn && open && ready) sendUpdate();
 }
 
@@ -218,6 +219,17 @@ void WebView::sendAudio() {
   }
   if (!count || !any) return;
   aout[5] = count;
+  sendBuf(0x2, aout);
+}
+
+// Printer output: 'R' + up to 512 bytes of ImageWriter data
+void WebView::sendPrint() {
+  uint8_t b[512];
+  int n = nextPrint(b, sizeof b);
+  if (n <= 0) return;
+  aout.assign(4, 0);
+  aout.push_back('R');
+  aout.insert(aout.end(), b, b + n);
   sendBuf(0x2, aout);
 }
 

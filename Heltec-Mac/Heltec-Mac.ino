@@ -309,6 +309,10 @@ static void setupWeb() {
     web.sendHeader("Cache-Control", "max-age=31536000, immutable");
     web.send_P(200, "application/javascript", SIT_ARSENIC_JS);
   });
+  web.on("/imagewriter.js", HTTP_GET, [] {
+    web.sendHeader("Cache-Control", "max-age=31536000, immutable");
+    web.send_P(200, "application/javascript", IMAGEWRITER_JS);
+  });
 
   web.on("/api/status", HTTP_GET, [] {
     const MacMeta& m = mac.meta();
@@ -593,6 +597,7 @@ void setup() {
   webView.onAudio = [](bool on) { mac.audioWanted = on; };
   webView.nextAudio = [](uint8_t* a) { return mac.popAudio(a); };
   webView.audioPending = [] { return mac.audioQueued(); };
+  webView.nextPrint = [](uint8_t* b, int max) { return mac.printerRead(b, max); };
   webView.onClock = [](uint32_t t, int tz) { mac.setClock(t, tz, true); Serial.printf("Clock set from the browser (UTC%+d min)\n", tz); };
   // Internet time as a fallback when no browser is open (uses the time zone the browser last told us)
   if (!apMode) configTime(0, 0, "pool.ntp.org", "time.google.com");

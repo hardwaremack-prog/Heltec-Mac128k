@@ -28,6 +28,10 @@
 /* Callbacks for various SCC events: */
 struct scc_cb {
         void (*irq_set)(int status);
+        /* Heltec-Mac: transmit.  ch 0 = B (printer port), 1 = A (modem port).
+         * tx_ready() == 0 holds the byte (flow control); tx() takes it. */
+        int  (*tx_ready)(int ch);
+        void (*tx)(int ch, uint8_t data);
 };
 
 void    scc_init(struct scc_cb *cb);
@@ -35,6 +39,8 @@ void    scc_write(unsigned int address, uint8_t data);
 uint8_t scc_read(unsigned int address);
 /* Set a new state for the DCD pins: */
 void    scc_set_dcd(int a, int b);
+/* Retry a byte held back by tx_ready() (call often) */
+void    scc_poll(void);
 
 #endif
 

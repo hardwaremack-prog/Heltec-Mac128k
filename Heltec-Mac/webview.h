@@ -33,6 +33,7 @@ class WebView {
   std::function<bool(uint8_t*)> nextAudio;           // fetch one 371-byte sound frame
   std::function<int()> audioPending;                 // how many sound frames are waiting
   std::function<void(uint32_t macTime, int tzMin)> onClock;
+  std::function<int(uint8_t*, int)> nextPrint;       // printer-port bytes for the browser
   uint32_t bytesSent = 0;
   bool audioOn = false;
 
@@ -57,6 +58,7 @@ class WebView {
   void sendFrame(uint8_t opcode, const uint8_t* p, size_t n);
   void sendBuf(uint8_t opcode, std::vector<uint8_t>& v);   // v starts with 4 spare bytes for the header
   void sendAudio();
+  void sendPrint();
   std::vector<uint8_t> aout;
 };
 

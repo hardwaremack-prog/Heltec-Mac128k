@@ -434,6 +434,26 @@ static void     scc_irq_set(int status)
         scc_irq_state = status;
 }
 
+// Heltec-Mac: the printer port (SCC channel B) goes to whoever registered for it
+static int  (*printer_ready)(void);
+static void (*printer_out)(uint8_t b);
+void    umac_set_printer(int (*ready)(void), void (*out)(uint8_t b))
+{
+        printer_ready = ready;
+        printer_out = out;
+}
+static int      scc_tx_ready(int ch)
+{
+        if (ch != 0 || !printer_ready)
+                return 1;
+        return printer_ready();
+}
+static void     scc_tx(int ch, uint8_t data)
+{
+        if (ch == 0 && printer_out)
+                printer_out(data);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IWM
 
@@ -713,6 +733,8 @@ int     umac_init(void *ram_base, void *rom_base, disc_descr_t discs[DISC_NUM_DR
         };
         via_init(&vcb);
         struct scc_cb scb = { .irq_set = scc_irq_set,
+                              .tx_ready = scc_tx_ready,
+                              .tx = scc_tx,
         };
         scc_init(&scb);
         disc_init(discs);
@@ -902,6 +924,7 @@ int     umac_loop(void)
         via_tick(global_time_us);
         mouse_tick();
         kbd_check_work();
+        scc_poll();
 
 	return sim_done;
 }
