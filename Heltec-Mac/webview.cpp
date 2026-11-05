@@ -88,6 +88,7 @@ void WebView::poll() {
     if (!handshake()) return;
   }
   while (conn && readFrame()) {}
+  if (conn && pongDue) { pongDue = false; uint8_t pong = 'p'; sendFrame(0x2, &pong, 1); }
   if (conn && open && audioOn && nextAudio) sendAudio();
   if (conn && open && nextPrint) sendPrint();
   if (conn && open && ready) sendUpdate();
@@ -150,8 +151,8 @@ bool WebView::readFrame() {
     const uint8_t* mk = in.data() + hdr;
     for (uint64_t i = 0; i < len; i++) p[i] ^= mk[i & 3];
   }
-  if (op == 0x8) { sendFrame(0x8, nullptr, 0); drop(); return false; }   // close
-  if (op == 0x9) sendFrame(0xA, p, len);                                  // ping -> pong
+  if (op == 0x8) { if (!inSend) sendFrame(0x8, nullptr, 0); drop(); return false; }   // close
+  if (op == 0x9) { if (!inSend) sendFrame(0xA, p, len); }               // ping -> pong
   else if (op == 0x1 || op == 0x2) handleMessage(p, len);
   if (conn) in.erase(in.begin(), in.begin() + need);
   return conn != nullptr;
@@ -161,7 +162,7 @@ void WebView::handleMessage(const uint8_t* p, size_t n) {
   if (!n) return;
   switch (p[0]) {
     case 'A': ready = true; break;
-    case 'p': { uint8_t pong = 'p'; sendFrame(0x2, &pong, 1); break; }   // keep-alive
+    case 'p': if (inSend) pongDue = true; else { uint8_t pong = 'p'; sendFrame(0x2, &pong, 1); } break;   // keep-alive
     case 'F': ready = true; full = true; break;
     case 'M':
       if (n >= 6 && onPointer) onPointer((p[1] << 8) | p[2], (p[3] << 8) | p[4], p[5] != 0);
@@ -200,8 +201,30 @@ void WebView::sendBuf(uint8_t opcode, std::vector<uint8_t>& v) {
   if (n < 126) { start = v.data() + 2; start[0] = 0x80 | opcode; start[1] = n; }
   else { start = v.data(); start[0] = 0x80 | opcode; start[1] = 126; start[2] = n >> 8; start[3] = n; }
   size_t len = v.data() + v.size() - start;
-  if (!conn->write(start, len)) { drop(); return; }
+  // Send without blocking. While the connection is full (a slow or busy Wi-Fi link), keep
+  // reading the browser's mouse and keyboard, so they never freeze behind a screen update.
+  size_t done = 0; int waited = 0;
+  inSend = true;
+  while (conn && done < len) {
+    int w = conn->writeSome(start + done, len - done);
+    if (w < 0) break;
+    if (w > 0) { done += w; waited = 0; continue; }
+    if (++waited > 2000) break;          // stuck for ~2 s: drop the viewer, it reconnects
+    pumpInput();
+    if (conn) conn->idle();
+  }
+  inSend = false;
+  if (!conn) return;
+  if (done < len) { drop(); return; }
   bytesSent += len;
+}
+
+// Read whatever the browser has sent and act on it (used while a send waits)
+void WebView::pumpInput() {
+  uint8_t buf[256];
+  int n = conn->read(buf, sizeof buf);
+  if (n > 0) in.insert(in.end(), buf, buf + n);
+  while (conn && readFrame()) {}
 }
 
 // Sound goes out in bundles of 3+ frames (about 50 ms), and bundles that are all silence

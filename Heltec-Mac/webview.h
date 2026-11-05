@@ -45,6 +45,7 @@ class WebView {
   static const int TCOLS = MAC_W / 16, TROWS = (MAC_H + 15) / 16;
   VncConn* conn = nullptr;
   bool open = false;            // handshake done
+  bool inSend = false, pongDue = false;   // reading input while a big send waits
   std::vector<uint8_t> in, out;
   bool ready = false, full = true;
   uint32_t lastFrame = 0xFFFFFFFF;
@@ -59,6 +60,7 @@ class WebView {
   void sendBuf(uint8_t opcode, std::vector<uint8_t>& v);   // v starts with 4 spare bytes for the header
   void sendAudio();
   void sendPrint();
+  void pumpInput();
   std::vector<uint8_t> aout;
 };
 

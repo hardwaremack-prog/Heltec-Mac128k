@@ -16,6 +16,9 @@ struct VncConn {
   virtual ~VncConn() {}
   virtual int read(uint8_t* buf, int n) = 0;            // non-blocking; returns bytes read (0 = none)
   virtual bool write(const uint8_t* buf, int n) = 0;    // blocking; false = connection lost
+  // Non-blocking: bytes taken now (0 = the connection is full, try again), -1 = lost.
+  virtual int writeSome(const uint8_t* buf, int n) { return write(buf, n) ? n : -1; }
+  virtual void idle() {}                                 // wait about 1 ms
   virtual bool connected() = 0;
   virtual void close() = 0;
 };

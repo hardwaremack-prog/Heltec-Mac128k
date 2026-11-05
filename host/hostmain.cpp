@@ -77,6 +77,7 @@ struct SockConn : VncConn {
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    if (getenv("SMALLSNDBUF")) { int sz = 4096; setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz); }   // test: act like the board's small buffers
   }
   int read(uint8_t* b, int n) override {
     int r = ::recv(fd, b, n, 0);
@@ -84,6 +85,13 @@ struct SockConn : VncConn {
     if (r < 0) { if (errno != EAGAIN && errno != EWOULDBLOCK) ok = false; return 0; }
     return r;
   }
+  int writeSome(const uint8_t* b, int n) override {
+    int w = ::send(fd, b, n, MSG_NOSIGNAL | MSG_DONTWAIT);
+    if (w >= 0) return w;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+    ok = false; return -1;
+  }
+  void idle() override { usleep(1000); }
   bool write(const uint8_t* b, int n) override {
     while (n > 0) {
       int w = ::send(fd, b, n, MSG_NOSIGNAL);
@@ -234,7 +242,7 @@ int main(int argc, char** argv) {
   vnc.fb = web.fb = [] { return mac.framebuffer(); };
   vnc.frame = web.frame = [] { return (uint32_t)mac.frameCount; };
   vnc.onKey = web.onKey = [](uint32_t k, bool d) { macKeys.push(k, d); };
-  vnc.onPointer = web.onPointer = [](int x, int y, bool b) { mac.mouse(x, y, b); };
+  vnc.onPointer = web.onPointer = [](int x, int y, bool b) { mac.mouse(x, y, b); if (getenv("MOUSELOG")) { printf("mouse %d,%d %lld\n", x, y, (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); fflush(stdout); } };
   vnc.onPaste = web.onPaste = [](const std::string& t) { macKeys.typeText(t.c_str()); };
   vnc.onDisconnect = web.onDisconnect = [] { macKeys.releaseAll(); };
   web.onAudio = [](bool on) { mac.audioWanted = on; };

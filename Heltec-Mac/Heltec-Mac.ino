@@ -21,6 +21,8 @@
 #include <esp_sleep.h>
 #include <esp_wifi.h>
 #include <WiFiUdp.h>
+#include <lwip/sockets.h>
+#include <errno.h>
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -266,19 +268,31 @@ struct WifiConn : VncConn {
     if (a <= 0) return 0;
     return c.read(b, a < n ? a : n);
   }
+  // The library's write() can wait up to 10 s on a full connection; send() with
+  // MSG_DONTWAIT returns at once, so the network task keeps moving.
+  int writeSome(const uint8_t* b, int n) override {
+    int fd = c.fd();
+    if (fd < 0 || !c.connected()) return -1;
+    int r = send(fd, b, n, MSG_DONTWAIT);
+    if (r > 0) return r;
+    if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOMEM)) return 0;
+    return r == 0 ? 0 : -1;
+  }
   bool write(const uint8_t* b, int n) override {
-    int idle = 0;
+    int waited = 0;
     while (n > 0) {
-      size_t w = c.write(b, n);
+      int w = writeSome(b, n);
+      if (w < 0) return false;
       if (w == 0) {
-        if (!c.connected() || ++idle > 2000) return false;   // stuck for 2 s: drop the viewer, it reconnects
+        if (++waited > 2000) return false;   // stuck for ~2 s: drop the viewer, it reconnects
         delay(1);
         continue;
       }
-      idle = 0; b += w; n -= w;
+      waited = 0; b += w; n -= w;
     }
     return true;
   }
+  void idle() override { delay(1); }
   bool connected() override { return c.connected(); }
   void close() override { c.stop(); }
 };
