@@ -1,6 +1,7 @@
 // MacMachine: wraps the umac Mac Plus core with flash storage for the ROM and disk.
 // Portable: the ESP32 build uses flash partitions, the PC test build uses plain files.
 #pragma once
+#include "heltec_config.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <string>
@@ -16,13 +17,21 @@ struct FlashArea {
   virtual void unmap() = 0;
 };
 
+#ifdef HELTEC_V4
+// Heltec V4 (PSRAM, 16 MB flash): room for the 256 KB Mac SE ROMs too
+static const uint32_t MAC_ROM_SIZE = 0x40000;          // 256 KB window (smaller ROMs are mirrored)
+#else
 static const uint32_t MAC_ROM_SIZE = 0x20000;          // 128 KB
+#endif
 static const uint32_t ROM_AREA_ORIG = 0;               // the ROM file as uploaded
-static const uint32_t ROM_AREA_PATCHED = 0x20000;      // patched copy the emulator runs from
-static const uint32_t ROM_AREA_META = 0x40000;         // 4 KB of settings
-static const uint32_t ROM_AREA_SIZE = 0x41000;
+static const uint32_t ROM_AREA_PATCHED = MAC_ROM_SIZE; // patched copy the emulator runs from
+static const uint32_t ROM_AREA_META = 2 * MAC_ROM_SIZE;   // 4 KB of settings
+static const uint32_t ROM_AREA_SIZE = 2 * MAC_ROM_SIZE + 0x1000;
 static const uint32_t PLUS_V3_CHECKSUM = 0x4D1F8172;
 static const uint32_t MAC128K_CHECKSUM = 0x28BA61CE;   // original 64 KB Mac 128K/512K ROM
+static const uint32_t SE_CHECKSUM = 0xB2E362A8;        // Mac SE (256 KB)
+static const uint32_t SEFDHD_CHECKSUM = 0xB306E171;    // Mac SE FDHD (256 KB)
+inline bool isSeRom(uint32_t ck) { return ck == SE_CHECKSUM || ck == SEFDHD_CHECKSUM; }
 
 struct MacMeta {
   uint32_t magic;        // 'MMSH'

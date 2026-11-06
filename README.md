@@ -13,6 +13,32 @@ PC, a Raspberry Pi or a phone, and you're at the Finder.
 *The 1985 maze game Amazing, running on the board and viewed in Chrome. Every Mac pixel is drawn
 as a crisp 2×2 block. Battery level and the board's controls sit right on the page.*
 
+## New: Heltec-Mac SE for the Heltec V4
+
+The **Heltec WiFi LoRa 32 V4** has 2 MB of PSRAM and 16 MB of flash, enough for a real
+**1 MB Macintosh SE**. Flash [`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html),
+upload the **Mac SE FDHD** (B306E171) or **Mac SE** (B2E362A8) ROM, and it boots System 4 to 6
+from **800K and 1.44 MB HFS** disks.
+
+![A Mac SE with 1 MB running System 4.2 and Finder 6.0 on a Heltec V4](docs/heltec-mac-se.png)
+
+*Heltec-Mac SE on a V4: System 4.2, Finder 6.0, 1,024K of memory.*
+
+What's different on the V4:
+
+- **A real Mac SE.** The emulator now has the SE's **ADB** keyboard and mouse (the Apple
+  Desktop Bus, driven through the VIA like on the real board), the SE's ROM overlay, and real
+  VIA timers, which System 4 and later need for the Time Manager.
+- **1 MB of RAM** in the V4's PSRAM, leaving the ESP32's own memory to Wi‑Fi.
+- **About 13 MB of disks:** nine 1.44 MB disks or sixteen 800K disks.
+- **The Plus and 128K ROMs work too**, with up to 1 MB on the V4.
+- Everything else is the same: the browser page with sound, the clock, print to PDF (choose the
+  ImageWriter in the Chooser first, as on a real SE), battery, sleep, backup and clone.
+- Its hotspot is **Heltec-MacSE-Setup** (password **heltecmac**) and it answers to
+  **heltec-macse.local**, so a V3 and a V4 can share a network.
+
+![Printed from TeachText on the Mac SE](docs/se-printout.png)
+
 ## Highlights
 
 - **Plays in any modern browser (HTML5).** The screen streams over a WebSocket into a canvas,
@@ -64,7 +90,8 @@ ready to copy onto the disk in use.*
 
 ## What you need
 
-- A **Heltec WiFi LoRa 32 V3** (ESP32-S3, 8 MB flash) and a USB-C cable that carries data
+- A **Heltec WiFi LoRa 32 V3** (ESP32-S3, 8 MB flash) for Heltec-Mac, or a **Heltec WiFi LoRa 32
+  V4** (2 MB PSRAM, 16 MB flash) for Heltec-Mac SE, and a USB-C cable that carries data
 - **Chrome or Edge** on a computer, for flashing
 - Your own **Mac ROM** and **disk images**. Apple's software isn't included.
 
@@ -75,7 +102,8 @@ ready to copy onto the disk in use.*
 
 ### 1. Flash the board
 
-Download [`flasher/Heltec-Mac-Flasher.html`](flasher/Heltec-Mac-Flasher.html) and open it in
+Download [`flasher/Heltec-Mac-Flasher.html`](flasher/Heltec-Mac-Flasher.html) (V3) or
+[`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html) (V4) and open it in
 Chrome or Edge. The firmware is built into the page. Plug in the board, click **Connect**, pick
 it from the list, and click **Flash**. The page checks the write and restarts the board. If
 anything goes wrong, the page walks you through the usual fixes (USB driver, cable, download
@@ -83,7 +111,8 @@ mode), and **Watch the board start** shows the board's own startup log.
 
 ![The Heltec-Mac Flasher, with the backup and clone section](docs/flasher.png)
 
-Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin`
+Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin` (V3) or
+`firmware/Heltec-Mac-V4.bin` (V4). The V4 uses the ESP32-S3's own USB, so it needs no driver.
 
 Updating later keeps your ROM, disks and Wi‑Fi settings.
 
@@ -259,8 +288,13 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
 
 ## Limitations
 
-- The Mac has 128 KB of RAM, because that's what the board can spare. System 1 to 3 software
-  runs; System 4 and later doesn't. A board with PSRAM (extra memory) would allow a bigger Mac.
+- On the V3 the Mac has 128 KB of RAM, because that's what the board can spare. System 1 to 3
+  software runs; System 4 and later doesn't. For that, use a V4 (Heltec-Mac SE, 1 MB).
+- On the V4, how fast the Mac runs depends on the PSRAM, which is slower than the ESP32's own
+  memory; **Turbo** (under Machine) lets it run flat out. **Add to the disk in use** only
+  copies programs onto 400K MFS disks for now, not HFS ones.
+- ImageWriter 2.x (System 4 and later) waits a few seconds before printing, because it asks for
+  an ImageWriter II's ID first and the virtual printer doesn't answer.
 - One floppy drive. To switch disks, pick another one in the library, and the Mac restarts.
 - No modem port, AppleTalk or SCSI. The printer port only talks to the built-in PDF printer.
 - The emulation isn't cycle-exact, so a few timing-sensitive programs may run or sound slightly
@@ -290,9 +324,16 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
 
 ## Building from source
 
-Arduino IDE (or arduino-cli) with the **esp32** core 3.x, board **Heltec WiFi LoRa 32(V3)**. Open
-[`Heltec-Mac/Heltec-Mac.ino`](Heltec-Mac/Heltec-Mac.ino). The `partitions.csv` in the sketch
-folder sets up the app, the ROM area and the disk library. No extra libraries are needed.
+Arduino IDE (or arduino-cli) with the **esp32** core 3.x. Open
+[`Heltec-Mac/Heltec-Mac.ino`](Heltec-Mac/Heltec-Mac.ino). No extra libraries are needed.
+
+- **V3:** board **Heltec WiFi LoRa 32(V3)**. The `partitions.csv` in the sketch folder sets up
+  the app, the ROM area and the disk library.
+- **V4:** board **Heltec WiFi LoRa 32(V4)** with **PSRAM: QSPI PSRAM**, **Flash Size: 16MB**
+  and **USB CDC On Boot: Enabled**, and copy `partitions-v4.csv` over `partitions.csv`. The
+  board setting turns on the V4 build (`heltec_config.h`).
+
+`tools/build_firmware.sh` does both with arduino-cli and writes the images in `firmware/`.
 
 | Folder | What's in it |
 |---|---|
@@ -301,19 +342,20 @@ folder sets up the app, the ROM area and the disk library. No extra libraries ar
 | `web/` | The browser-side unpackers (`macfiles.js`, `sit-arsenic.js`), the virtual ImageWriter (`imagewriter.js`) and a WebAssembly build |
 | `flasher/` | The one-page flasher and the script that builds it from the firmware |
 | `host/` | A PC build of the same emulator and web page, plus tests |
-| `firmware/` | The ready-to-flash firmware image |
+| `firmware/` | The ready-to-flash firmware images (V3 and V4) |
 
 The PC build runs the same code on a desktop for testing:
 
 ```
 cd host && ./build.sh
 ./machost --rom mac128k.rom --disk system.img   # web page at http://localhost:8080, VNC on 5900
+V4=1 ./build.sh && ./machost-v4 --ram 1024 --rom macse.rom --disk system6.img   # the V4 / Mac SE build
 ./machost --testrom                             # built-in test pattern, no ROM needed
 ```
 
 After changing `web/*.js`, run `python3 tools/embed_js.py` to rebuild the copy the board serves.
 `PRINTFILE=print.bin ./machost ...` saves whatever the Mac prints to a file, for testing.
-After changing the firmware, `flasher/make_flasher.py` rebuilds the flasher page.
+After changing the firmware, `flasher/make_flasher.py` rebuilds the flasher pages (`--v4` for the V4).
 
 ## Credits and licences
 
@@ -323,6 +365,8 @@ Heltec-Mac stands on the shoulders of some wonderful projects:
   heart of this. Heltec-Mac adds runtime memory sizing, sound output, an absolute mouse, the
   clock chip with parameter RAM, a working printer port, Mac 128K ROM support, a disk library and
   more.
+- The Mac SE's ADB keyboard and mouse (`src/core/adb.c`) follow **Mini vMac** by Paul C.
+  Pratt (GNU GPL v2), whose ADB code and SE ROM notes made the SE possible.
 - **Musashi** 68000 emulator by Karl Stenerud (MIT-style, `licenses/Musashi-LICENSE.txt`), with
   **SoftFloat** by John R. Hauser (`licenses/SoftFloat-README.txt`).
 - The replacement floppy driver (`src/core/disc.c`, `sonydrv.h`) comes from **Basilisk II** by

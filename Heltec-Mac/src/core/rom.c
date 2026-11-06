@@ -47,6 +47,11 @@
 #define ROM_128K_VERSION        0x28ba61ce
 #define ROM_128K_SONYDRV        0x1690
 #define ROM_128K_SIZE           0x10000
+/* Mac SE family (256 KB): same layout in the SE and SE FDHD ROMs (offsets as in Mini vMac) */
+#define ROM_SE_VERSION          0xb2e362a8
+#define ROM_SEFDHD_VERSION      0xb306e171
+#define ROM_SE_SONYDRV          0x34680
+#define ROM_SE_SIZE             0x40000
 
 #define M68K_INST_NOP           0x4e71
 
@@ -84,6 +89,8 @@ static uint32_t rom_get_version(uint8_t *rom_base)
                 rom_base[(offset)+0] = (data) & 0xff;           \
         } while (0)
 
+
+static void     rom_mirror(uint8_t *rom_base, unsigned int len);
 
 static void     rom_patch_plusv3(uint8_t *rom_base)
 {
@@ -249,8 +256,34 @@ static void     rom_patch_128k(uint8_t *rom_base)
                 sum += (rom_base[i] << 8) | rom_base[i + 1];
         ROM_WR32(0, sum);
 
-        /* Mirror into the second 64 KB, like the real 64 KB ROM in its 128 KB window */
-        memcpy(rom_base + ROM_128K_SIZE, rom_base, ROM_128K_SIZE);
+        /* Mirror across the window, like the real 64 KB ROM in its 128 KB window */
+        rom_mirror(rom_base, ROM_128K_SIZE);
+}
+
+/* Mirror a smaller ROM across the whole mapping window (after patching its first copy) */
+static void     rom_mirror(uint8_t *rom_base, unsigned int len)
+{
+        for (unsigned int o = len; o + len <= ROM_SIZE; o += len)
+                memcpy(rom_base + o, rom_base, len);
+}
+
+#if ROM_SIZE >= 0x40000
+static void     rom_patch_se(uint8_t *rom_base)
+{
+        /* Skip the ROM checksum test (we patch the ROM) and the long RAM test */
+        ROM_WR16(0x1c68, 0x6008);               /* bra.s +8 */
+        ROM_WR16(134, 0x6002);                  /* bra.s +2 */
+        ROM_WR16(286, 0x6002);
+        /* Replace .Sony with the paravirtual driver */
+        memcpy(rom_base + ROM_SE_SONYDRV, sony_driver, sizeof(sony_driver));
+        ROM_WR32(ROM_SE_SONYDRV + sizeof(sony_driver) - 4, PV_SONY_ADDR);
+}
+#endif
+
+int      rom_is_se(const uint8_t *rom_base)
+{
+        uint32_t v = rom_get_version((uint8_t *)rom_base);
+        return v == ROM_SE_VERSION || v == ROM_SEFDHD_VERSION;
 }
 
 int      rom_patch(uint8_t *rom_base)
@@ -262,8 +295,16 @@ int      rom_patch(uint8_t *rom_base)
         switch(v) {
         case ROM_PLUSv3_VERSION:
                 rom_patch_plusv3(rom_base);
+                rom_mirror(rom_base, 0x20000);
                 r = 0;
                 break;
+#if ROM_SIZE >= 0x40000
+        case ROM_SE_VERSION:
+        case ROM_SEFDHD_VERSION:
+                rom_patch_se(rom_base);
+                r = 0;
+                break;
+#endif
 
         case ROM_128K_VERSION:
                 rom_patch_128k(rom_base);

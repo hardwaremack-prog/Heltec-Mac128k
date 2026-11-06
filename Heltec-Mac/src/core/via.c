@@ -28,6 +28,8 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "via.h"
 
@@ -56,6 +58,8 @@
 #define  VIA_IRQ_CA     0x01
 #define  VIA_IRQ_CB     0x02
 #define  VIA_IRQ_SR     0x04
+#define  VIA_IRQ_T2     0x20
+#define  VIA_IRQ_T1     0x40
 #define VIA_IER         14
 #define VIA_RA_ALT      15 // No-handshake version
 
@@ -84,6 +88,41 @@ static int irq_status = 0;
 static uint8_t irq_active = 0;
 static uint8_t irq_enable = 0;
 static int sr_tx_pending = -1;
+
+/* Heltec-Mac: VIA timers (Mac SE).  Both count down at the E clock (CPU clock / 10);
+ * times are kept in E-clock ticks.  via_eclock() gives "now" from inside the CPU loop. */
+static uint64_t (*via_eclock_fn)(void);
+static int      via_timers_on;
+static struct { uint16_t latch; uint64_t start; uint16_t from; int running, fired; uint64_t lastcheck; } t1, t2;
+
+void    via_timers_enable(int on, uint64_t (*eclock)(void))
+{
+        via_timers_on = on;
+        via_eclock_fn = eclock;
+        memset(&t1, 0, sizeof t1);
+        memset(&t2, 0, sizeof t2);
+}
+
+static uint64_t via_now(void) { return via_eclock_fn ? via_eclock_fn() : 0; }
+
+/* T1 counter value now (free-run reloads from the latch, one-shot keeps counting down) */
+static uint16_t t1_value(uint64_t now)
+{
+        if (!t1.running) return t1.from;
+        uint64_t el = now - t1.start;
+        if (el <= t1.from) return t1.from - el;
+        if (via_regs[VIA_ACR] & 0x40) {
+                uint64_t period = (uint64_t)t1.latch + 2;
+                return t1.latch - ((el - t1.from - 1) % period);
+        }
+        return (uint16_t)(t1.from - el);
+}
+
+static uint16_t t2_value(uint64_t now)
+{
+        if (!t2.running) return t2.from;
+        return (uint16_t)(t2.from - (now - t2.start));
+}
 
 void    via_init(struct via_cb *cb)
 {
@@ -115,8 +154,17 @@ static void via_update_regb(uint8_t data)
 }
 
 
+extern int umac_is_se;
+
 static void via_update_sr(uint8_t data)
 {
+        if (umac_is_se) {
+                /* Mac SE: the ADB transceiver clocks the byte out when the bus
+                 * state changes (see adb.c), so just hold it until then. */
+                via_regs[VIA_SR] = data;
+                irq_active &= ~VIA_IRQ_SR;
+                return;
+        }
         /* Mac assumption: SR active when ACR SR control selects
          * external clock:
          */
@@ -214,6 +262,30 @@ void    via_write(unsigned int address, uint8_t data)
                 via_update_sr(data);
                 dowrite = 0;
                 break;
+        case VIA_T1CL:          /* writes go to the low latch */
+        case VIA_T1LL:
+                if (via_timers_on) { t1.latch = (t1.latch & 0xff00) | data; dowrite = 0; }
+                break;
+        case VIA_T1LH:
+                if (via_timers_on) { t1.latch = (t1.latch & 0x00ff) | (data << 8); irq_active &= ~VIA_IRQ_T1; dowrite = 0; }
+                break;
+        case VIA_T1CH:          /* load the counter from the latches and start */
+                if (via_timers_on) {
+                        t1.latch = (t1.latch & 0x00ff) | (data << 8);
+                        t1.from = t1.latch; t1.start = t1.lastcheck = via_now(); t1.running = 1; t1.fired = 0;
+                        irq_active &= ~VIA_IRQ_T1; dowrite = 0;
+                }
+                break;
+        case VIA_T2CL:
+                if (via_timers_on) { t2.latch = (t2.latch & 0xff00) | data; dowrite = 0; }
+                break;
+        case VIA_T2CH:
+                if (via_timers_on) {
+                        t2.latch = (t2.latch & 0x00ff) | (data << 8);
+                        t2.from = t2.latch; t2.start = via_now(); t2.running = 1; t2.fired = 0;
+                        irq_active &= ~VIA_IRQ_T2; dowrite = 0;
+                }
+                break;
         case VIA_IER:
                 if (data & 0x80)
                         irq_enable |= data & 0x7f;
@@ -238,8 +310,14 @@ void    via_write(unsigned int address, uint8_t data)
 
         if (dowrite)
                 via_regs[r] = data;
+        /* Heltec-Mac: a pin set back to input floats high, so a direction change can
+         * change what's on port B's lines (the Mac SE's ADB state lines rely on it) */
+        if (r == VIA_DDRB && via_callbacks.rb_change)
+                via_callbacks.rb_change(via_regs[VIA_RB]);
         via_assess_irq();
 }
+
+uint8_t via_ddrb(void) { return via_regs[VIA_DDRB]; }
 
 uint8_t via_read_ifr(void)
 {
@@ -283,6 +361,25 @@ uint8_t via_read(unsigned int address)
                 irq_active &= ~0x04;
                 break;
 
+        case VIA_T1CL:
+                if (via_timers_on) { data = t1_value(via_now()) & 0xff; irq_active &= ~VIA_IRQ_T1; }
+                break;
+        case VIA_T1CH:
+                if (via_timers_on) data = t1_value(via_now()) >> 8;
+                break;
+        case VIA_T1LL:
+                if (via_timers_on) data = t1.latch & 0xff;
+                break;
+        case VIA_T1LH:
+                if (via_timers_on) data = t1.latch >> 8;
+                break;
+        case VIA_T2CL:
+                if (via_timers_on) { data = t2_value(via_now()) & 0xff; irq_active &= ~VIA_IRQ_T2; }
+                break;
+        case VIA_T2CH:
+                if (via_timers_on) data = t2_value(via_now()) >> 8;
+                break;
+
         case VIA_IER:
                 data = 0x80 | irq_enable;
                 break;
@@ -302,7 +399,28 @@ uint8_t via_read(unsigned int address)
 void    via_tick(uint64_t time)
 {
         (void)time;
-        // FIXME: support actual timers.....!
+        if (!via_timers_on)
+                return;
+        uint64_t now = via_now();
+        int changed = 0;
+        if (t1.running) {
+                uint64_t el = now - t1.start;
+                if (via_regs[VIA_ACR] & 0x40) {         /* free-run: every underflow */
+                        uint64_t period = (uint64_t)t1.latch + 2;
+                        uint64_t n_now = el > t1.from ? 1 + (el - t1.from - 1) / period : 0;
+                        uint64_t lel = t1.lastcheck - t1.start;
+                        uint64_t n_then = lel > t1.from ? 1 + (lel - t1.from - 1) / period : 0;
+                        if (n_now > n_then) { irq_active |= VIA_IRQ_T1; changed = 1; }
+                } else if (!t1.fired && el > t1.from) { /* one-shot: once */
+                        t1.fired = 1; irq_active |= VIA_IRQ_T1; changed = 1;
+                }
+                t1.lastcheck = now;
+        }
+        if (t2.running && !t2.fired && now - t2.start > t2.from) {
+                t2.fired = 1; irq_active |= VIA_IRQ_T2; changed = 1;
+        }
+        if (changed)
+                via_assess_irq();
 }
 
 /* External world pipes CA1/CA2 events (passage of time) in here:
@@ -315,6 +433,21 @@ void    via_caX_event(int ca)
                 irq_active |= VIA_IRQ_CB;
         }
         via_assess_irq();
+}
+
+/* Mac SE / ADB: the transceiver reads the byte the Mac put in the shift register
+ * (shift out under external clock), which tells the Mac it was taken. */
+uint8_t via_sr_shift_out(void)
+{
+        if ((via_regs[VIA_ACR] & 0x1c) != 0x1c) {
+#ifdef MACMESH_HOST
+                if (getenv("ADBTRACE")) fprintf(stderr, "[VIA shift-out but ACR=%02x]\n", via_regs[VIA_ACR]);
+#endif
+                return 0;
+        }
+        irq_active |= VIA_IRQ_SR;
+        via_assess_irq();
+        return via_regs[VIA_SR];
 }
 
 void    via_sr_rx(uint8_t val)
@@ -330,5 +463,8 @@ void    via_sr_rx(uint8_t val)
                 via_assess_irq();
         } else {
                 VDBG("[VIA ACR SR state %02x, not receiving]\n", via_regs[VIA_ACR]);
+#ifdef MACMESH_HOST
+                if (getenv("ADBTRACE")) fprintf(stderr, "[VIA shift-in %02x but ACR=%02x]\n", val, via_regs[VIA_ACR]);
+#endif
         }
 }

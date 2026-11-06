@@ -47,6 +47,11 @@
     const num = (i, n) => { let v = 0; for (let k = 0; k < n; k++) { const c = d[i + k]; if (c >= 48 && c <= 57) v = v * 10 + c - 48; } return v; };
     const putChar = c => {
       const cw = U * 8 / dpi;
+      if (c === ' ' && !under) {          // a space only moves the head (and never makes a page "printed")
+        const t = page.texts[page.texts.length - 1];
+        if (t && t.y === y && Math.abs(t.x + t.s.length * t.cw - (LEFT + margin + x)) < 0.5 && t.cw === cw) t.s += c;
+        x += cw; return;
+      }
       let t = page.texts[page.texts.length - 1];
       const px = LEFT + margin + x;
       if (!t || t.y !== y || t.bold !== bold || Math.abs(t.x + t.s.length * t.cw - px) > 0.5 || t.cw !== cw)

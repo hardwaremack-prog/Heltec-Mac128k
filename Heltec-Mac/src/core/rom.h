@@ -25,10 +25,19 @@
 #ifndef ROM_H
 #define ROM_H
 
-#define ROM_SIZE        0x20000         /* Real mapping size */
+#include "../../heltec_config.h"
+
+/* Real mapping size.  The Heltec V4 build (PSRAM, 16 MB flash) also runs the 256 KB
+ * Mac SE ROMs; smaller ROMs are mirrored to fill the window, like the hardware does. */
+#ifdef HELTEC_V4
+#define ROM_SIZE        0x40000
+#else
+#define ROM_SIZE        0x20000
+#endif
 
 #include <inttypes.h>
 
 int      rom_patch(uint8_t *rom_base);
+int      rom_is_se(const uint8_t *rom_base);   /* 1 for the Mac SE / SE FDHD ROMs */
 
 #endif

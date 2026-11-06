@@ -1,0 +1,8 @@
+# Heltec WiFi LoRa 32 V4 (16 MB flash): Heltec-Mac SE
+# Name,   Type, SubType,  Offset,   Size
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x200000,
+macrom,   data, 0x40,     0x210000, 0x81000,
+macdisk,  data, 0x41,     0x291000, 0xD5F000,
+coredump, data, coredump, 0xFF0000, 0x10000,

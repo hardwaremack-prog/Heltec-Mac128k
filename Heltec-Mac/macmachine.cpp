@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#if defined(ARDUINO) && defined(HELTEC_V4)
+#include <esp_heap_caps.h>
+#endif
 
 extern "C" {
 #include "src/core/umac.h"
@@ -16,6 +19,12 @@ static const uint32_t SECTOR = 4096;
 static const int64_t QUANTUM_US = 5000;          // Mac time run per umac_loop()
 
 // ------------------------------------------------------------------ ROM identification
+#ifdef HELTEC_V4
+#define ROM_LIST "the Mac SE or SE FDHD ROM (256 KB), the Mac Plus v3 ROM (128 KB) or the Mac 128K/512K ROM (64 KB)"
+#else
+#define ROM_LIST "the Mac Plus v3 ROM (128 KB, 4D1F8172) or the Mac 128K/512K ROM (64 KB, 28BA61CE)"
+#endif
+
 RomInfo identifyRom(const uint8_t* rom, size_t len) {
   RomInfo r = {0, false, "Unknown ROM", false};
   if (len < 8) return r;
@@ -35,7 +44,8 @@ RomInfo identifyRom(const uint8_t* rom, size_t len) {
   };
   for (auto& k : known)
     if (k.ck == r.checksum) r.name = k.name;
-  r.supported = (r.checksum == PLUS_V3_CHECKSUM && len == MAC_ROM_SIZE) || (r.checksum == MAC128K_CHECKSUM && len == 0x10000);
+  r.supported = (r.checksum == PLUS_V3_CHECKSUM && len == 0x20000) || (r.checksum == MAC128K_CHECKSUM && len == 0x10000) ||
+                (MAC_ROM_SIZE >= 0x40000 && isSeRom(r.checksum) && len == 0x40000);
   r.supported = r.supported && r.checksumOk;
   return r;
 }
@@ -185,11 +195,15 @@ void MacMachine::saveMeta() {
 
 // Patches the ROM for this RAM size, using the (not yet started) Mac RAM as the 128 KB work
 // buffer, so no extra memory is needed.
-bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* buf) {
+bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* ramBuf) {
+  // patch in the Mac's RAM buffer when it's big enough (saves memory), else borrow some
+  uint8_t* buf = ramBytes >= MAC_ROM_SIZE ? ramBuf : (uint8_t*)malloc(MAC_ROM_SIZE);
+  if (!buf) return false;
   bool ok = romArea->read(ROM_AREA_ORIG, buf, MAC_ROM_SIZE);
   umac_ram_size = ramBytes;
   ok = ok && rom_patch(buf) == 0;
   ok = ok && romArea->erase(ROM_AREA_PATCHED, MAC_ROM_SIZE) && romArea->write(ROM_AREA_PATCHED, buf, MAC_ROM_SIZE);
+  if (buf != ramBuf) free(buf);
   if (ok) { m.patchedRam = ramBytes; saveMeta(); }
   return ok;
 }
@@ -207,7 +221,7 @@ int MacMachine::printerRead(uint8_t* out, int max) {
 }
 
 bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::string& why) {
-  if (!m.romOk) { why = "No Mac Plus ROM yet - upload one on the web page."; return false; }
+  if (!m.romOk) { why = "No Mac ROM yet - upload one on the web page."; return false; }
 
   // Pick the RAM size: the user's choice if it fits, else the biggest that leaves room for Wi-Fi.
   // Only 128 KB and 256 KB work: the Mac Plus ROM needs a power-of-two memory size
@@ -224,6 +238,11 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   if (!pick) { why = "Not enough free memory for even a 128K Mac."; return false; }
   uint32_t bytes = pick * 1024;
 
+  if (isSeRom(m.romChecksum) && pick < 1024) { why = "The Mac SE needs 1 MB of RAM, and there isn't room for it."; return false; }
+#if defined(ARDUINO) && defined(HELTEC_V4)
+  ram = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);   // the V4's PSRAM
+  if (!ram)
+#endif
   ram = (uint8_t*)malloc(bytes);
   if (!ram) { why = "RAM allocation failed."; return false; }
   if (m.patchedRam != bytes && !patchRom(bytes, ram)) {
@@ -398,7 +417,7 @@ bool MacMachine::romUploadChunk(const uint8_t* d, size_t n) {
 // The uploaded file is in the staging area. Accepts the Mac Plus v3 ROM (128 KB) or the
 // original Mac 128K/512K ROM (64 KB, mirrored to fill the 128 KB ROM window).
 bool MacMachine::finishRomUpload(std::string& msg) {
-  char b[220];
+  char b[360];
   uint8_t head[8], buf[1024];
   romArea->read(ROM_AREA_PATCHED, head, 8);
   uint32_t ck = ((uint32_t)head[0] << 24) | (head[1] << 16) | (head[2] << 8) | head[3];
@@ -411,21 +430,23 @@ bool MacMachine::finishRomUpload(std::string& msg) {
     return sum;
   };
   uint32_t romLen = 0;
-  if (upPos >= 0x10000 && ck == MAC128K_CHECKSUM && sumOf(0x10000) == ck) romLen = 0x10000;
-  else if (upPos >= MAC_ROM_SIZE && sumOf(MAC_ROM_SIZE) == ck) romLen = MAC_ROM_SIZE;
+  for (uint32_t len = 0x10000; len <= MAC_ROM_SIZE && !romLen; len <<= 1)
+    if (upPos >= len && sumOf(len) == ck) romLen = len;
   RomInfo info = identifyRom(head, 8);   // just for the name
   if (!romLen) {
     if (upPos < 0x10000 || (upPos < MAC_ROM_SIZE && ck != MAC128K_CHECKSUM))
-      snprintf(b, sizeof b, "That file is %u bytes. Heltec-Mac takes the Mac Plus v3 ROM (128 KB) or the Mac 128K/512K ROM (64 KB).", (unsigned)upPos);
+      snprintf(b, sizeof b, "That file is %u bytes. Heltec-Mac takes " ROM_LIST ".", (unsigned)upPos);
     else
       snprintf(b, sizeof b, "Checksum doesn't match (header %08X) - the file looks damaged or isn't a Mac ROM.", (unsigned)ck);
     msg = b; return false;
   }
-  if (ck != PLUS_V3_CHECKSUM && ck != MAC128K_CHECKSUM) {
+  bool known = (ck == PLUS_V3_CHECKSUM && romLen == 0x20000) || (ck == MAC128K_CHECKSUM && romLen == 0x10000) ||
+               (isSeRom(ck) && romLen == 0x40000);
+  if (!known) {
     if (strcmp(info.name, "Unknown ROM") == 0)
-      snprintf(b, sizeof b, "That isn't a ROM Heltec-Mac knows (checksum %08X). It takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", (unsigned)ck);
+      snprintf(b, sizeof b, "That isn't a ROM Heltec-Mac knows (checksum %08X). It takes " ROM_LIST ".", (unsigned)ck);
     else
-      snprintf(b, sizeof b, "That's a %s (%08X). Heltec-Mac takes the Mac Plus v3 ROM (4D1F8172) or the Mac 128K/512K ROM (28BA61CE).", info.name, (unsigned)ck);
+      snprintf(b, sizeof b, "That's a %s (%08X). Heltec-Mac takes " ROM_LIST ".", info.name, (unsigned)ck);
     msg = b; return false;
   }
   // good: copy staging -> orig (a 64 KB ROM is written twice)

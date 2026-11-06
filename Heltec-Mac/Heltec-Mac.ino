@@ -23,6 +23,7 @@
 #include <WiFiUdp.h>
 #include <lwip/sockets.h>
 #include <errno.h>
+#include "heltec_config.h"
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -40,10 +41,14 @@
 #define PIN_LED 35
 #define PIN_BUTTON 0     // PRG button
 
-static const char* AP_SSID = "Heltec-Mac-Setup";
+static const char* AP_SSID = BOARD_AP_SSID;
 static const char* AP_PASS = "heltecmac";
-static const char* HOSTNAME = "heltec-mac";
+static const char* HOSTNAME = BOARD_HOSTNAME;
+#ifdef HELTEC_V4
+static const size_t RUN_RESERVE = 128 * 1024;   // PSRAM to keep for the network buffers that land there
+#else
 static const size_t RUN_RESERVE = 56 * 1024;    // heap to keep free for Wi-Fi traffic, web page, VNC (Wi-Fi itself is already up)
+#endif
 
 static PartitionArea romPart, diskPart;
 static VncServer vnc;
@@ -239,7 +244,7 @@ static void drawOled() {
     }
   } else {
     char line[32];
-    snprintf(line, sizeof line, " HELTEC-MAC%10s", batteryText(true).c_str());
+    snprintf(line, sizeof line, "%-11s%10s", BOARD_OLED, batteryText(true).c_str());
     oled.text(0, 0, line, true);
     if (apMode) {
       oled.text(0, 2, "WIFI SETUP:");
@@ -636,7 +641,7 @@ void setup() {
   refreshDiskInfo();
 
   oled.begin();
-  oled.clear(); oled.text(0, 0, "     HELTEC-MAC      ", true); oled.text(0, 3, "JOINING WIFI..."); oled.show();
+  oled.clear(); { char t[22]; snprintf(t, sizeof t, "%-21s", BOARD_OLED); oled.text(0, 0, t, true); } oled.text(0, 3, "JOINING WIFI..."); oled.show();
 
   // Wi-Fi: saved network, else hotspot
   String ssid = prefs.getString("ssid", ""), pass = prefs.getString("pass", "");
@@ -704,8 +709,15 @@ void setup() {
   // Now the Mac gets what's left, after Wi-Fi, the servers and the tasks have taken their share.
   // If the board crashed three boots in a row, stay in safe mode (no Mac) so the page still works.
   safeMode = mac.meta().crashCount >= 3;
+#ifdef HELTEC_V4
+  // V4: the Mac's memory comes from the PSRAM, leaving the internal RAM to Wi-Fi
+  size_t freeH = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  Serial.printf("PSRAM free %u (largest %u)\n", (unsigned)freeH, (unsigned)largest);
+#else
   size_t freeH = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+#endif
   Serial.printf("Heap before Mac: free %u, largest block %u\n", (unsigned)freeH, (unsigned)largest);
   if (safeMode) {
     startError = "The board crashed 3 times in a row starting the Mac. Pick a smaller Mac RAM below and click Apply.";

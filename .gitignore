@@ -9,3 +9,5 @@ web/obj/
 web/heltec-mac.wasm
 flasher/node_modules/
 *-backup-*.bin
+host/obj-v4/
+host/machost-v4

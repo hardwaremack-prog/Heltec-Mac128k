@@ -53,6 +53,7 @@ typedef int jmp_buf[1];
 #include "via.h"
 #include "scc.h"
 #include "rom.h"
+#include "adb.h"
 #include "disc.h"
 
 #ifdef PICO
@@ -80,6 +81,10 @@ unsigned int umac_ram_size = 128*1024;   /* Heltec-Mac: set before umac_init() *
 uint8_t *_rom_base;
 
 int overlay = 1;
+int umac_is_se = 0;
+static int in_exec = 0;
+/* VIA E clock (CPU clock / 10; this emulator runs 8 CPU cycles per microsecond) */
+static uint64_t umac_eclock(void);    /* Heltec-Mac: running a Mac SE ROM (ADB, SE overlay) */
 static uint64_t global_time_us = 0;
 static int sim_done = 0;
 static jmp_buf main_loop_jb;
@@ -161,6 +166,10 @@ static void     via_ra_changed(uint8_t val)
         // 4 = overlay
         // 3 = snd.pg2 (sound buffer select)
         // [2:0] = sound volume
+        if (umac_is_se) {       /* SE: PA4 selects the drive; overlay goes on a ROM access */
+                oldval = val;
+                return;
+        }
         overlay = !!(val & 0x10);
         if ((oldval ^ val) & 0x10) {
                 MDBG("OVERLAY CHANGING\n");
@@ -290,6 +299,16 @@ static void     via_rb_changed(uint8_t val)
         // 4 = mouse4 (in, mouse X2)
         // 3 = mouse7 (in, 0 = button pressed)
         // [2:0] = RTC controls
+        if (umac_is_se) {
+                /* ADB state lines ST0 = PB4, ST1 = PB5; an input pin floats high */
+                static int last_st = 3;
+                uint8_t ddr = via_ddrb();
+                int st = (((val & ddr) | (~ddr & 0x30)) >> 4) & 3;
+                if (st != last_st) {
+                        last_st = st;
+                        adb_set_state(st, global_time_us);
+                }
+        }
         via_rb_val = val;
         rtc_port(val);
 }
@@ -305,6 +324,8 @@ static uint8_t via_mouse_pressed = 0;
 
 static uint8_t  via_rb_in(void)
 {
+        if (umac_is_se)         /* SE: PB3 = ADB interrupt; PB4/5 are outputs */
+                return rtc_data_out() | (adb_int_line() ? 0x08 : 0);
         uint8_t v = via_quadbits | rtc_data_out();
         // Mouse not pressed!
         if (!via_mouse_pressed)
@@ -499,8 +520,17 @@ static unsigned int  FAST_FUNC(cpu_read_instr_normal)(unsigned int address)
                 return ROM_RD_ALIGNED_BE16(address & (ROM_SIZE - 1));
 }
 
+/* Mac SE: the boot overlay switches off on the first access to the ROM's real address */
+static void     se_overlay_off(void)
+{
+        overlay = 0;
+        update_overlay_layout();
+}
+#define SE_OVERLAY_CHECK(a) do { if (overlay && umac_is_se && (ADR24(a) & 0xf00000) == ROM_ADDR) se_overlay_off(); } while (0)
+
 static unsigned int  FAST_FUNC(cpu_read_instr_overlay)(unsigned int address)
 {
+        SE_OVERLAY_CHECK(address);
         /* Need to check for both 0=ROM, 0x400000=ROM, and RAM at 0x600000...
          */
         if (IS_ROM(address))
@@ -514,6 +544,7 @@ unsigned int (*cpu_read_instr)(unsigned int address) = cpu_read_instr_overlay;
 /* Read data from RAM, ROM, or a device */
 unsigned int    FAST_FUNC(cpu_read_byte)(unsigned int address)
 {
+        SE_OVERLAY_CHECK(address);
         /* Most likely a RAM access, followed by a ROM access, then I/O */
         if (IS_RAM(address))
                 return RAM_RD8(CLAMP_RAM_ADDR(address));
@@ -536,6 +567,7 @@ unsigned int    FAST_FUNC(cpu_read_byte)(unsigned int address)
 
 unsigned int    FAST_FUNC(cpu_read_word)(unsigned int address)
 {
+        SE_OVERLAY_CHECK(address);
         if (IS_RAM(address))
                 return RAM_RD16(CLAMP_RAM_ADDR(address));
         if (IS_ROM(address))
@@ -550,6 +582,7 @@ unsigned int    FAST_FUNC(cpu_read_word)(unsigned int address)
 
 unsigned int    FAST_FUNC(cpu_read_long)(unsigned int address)
 {
+        SE_OVERLAY_CHECK(address);
         if (IS_RAM(address))
                 return RAM_RD32(CLAMP_RAM_ADDR(address));
         if (IS_ROM(address))
@@ -587,8 +620,22 @@ unsigned int    cpu_read_long_dasm(unsigned int address)
 
 
 /* Write data to RAM or a device */
+#ifdef MACMESH_HOST
+static void mem_watch(unsigned int address, unsigned int value, int size)
+{
+        static int mw = -1;
+        if (mw < 0) { const char *e = getenv("MEMWATCH"); mw = e ? (int)strtoul(e, 0, 16) : 0; }
+        if (mw && ADR24(address) <= (unsigned)mw && ADR24(address) + size > (unsigned)mw)
+                fprintf(stderr, "[MEM %06x <- %x (size %d) at PC %06x]\n", ADR24(address), value, size, m68k_get_reg(NULL, M68K_REG_PPC));
+}
+#define MEMWATCH(a, v, s) mem_watch(a, v, s)
+#else
+#define MEMWATCH(a, v, s) do {} while (0)
+#endif
+
 void    FAST_FUNC(cpu_write_byte)(unsigned int address, unsigned int value)
 {
+        MEMWATCH(address, value, 1);
         if (IS_RAM(address)) {
                 RAM_WR8(CLAMP_RAM_ADDR(address), value);
                 return;
@@ -620,6 +667,7 @@ void    FAST_FUNC(cpu_write_byte)(unsigned int address, unsigned int value)
 
 void    FAST_FUNC(cpu_write_word)(unsigned int address, unsigned int value)
 {
+        MEMWATCH(address, value, 2);
         if (IS_RAM(address)) {
                 RAM_WR16(CLAMP_RAM_ADDR(address), value);
                 return;
@@ -629,6 +677,7 @@ void    FAST_FUNC(cpu_write_word)(unsigned int address, unsigned int value)
 
 void    FAST_FUNC(cpu_write_long)(unsigned int address, unsigned int value)
 {
+        MEMWATCH(address, value, 4);
         if (IS_RAM(address)) {
                 RAM_WR32(CLAMP_RAM_ADDR(address), value);
                 return;
@@ -705,6 +754,18 @@ void    cpu_instr_callback(int pc)
 	static char buff[100];
 	static char buff2[100];
 	static unsigned int instr_size;
+#ifdef MACMESH_HOST
+        /* test hook: PCWATCH=403a54,403a8e prints when those addresses run */
+        static int nwatch = -1; static unsigned int watch[16];
+        if (nwatch < 0) {
+                nwatch = 0;
+                const char *w = getenv("PCWATCH");
+                while (w && *w && nwatch < 16) { watch[nwatch++] = strtoul(w, (char **)&w, 16); if (*w == ',') w++; }
+        }
+        for (int i = 0; i < nwatch; i++)
+                if ((unsigned int)pc == watch[i])
+                        fprintf(stderr, "[PC %06x D0=%08x D1=%08x D2=%08x]\n", pc, m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1), m68k_get_reg(NULL, M68K_REG_D2));
+#endif
 
         if (!disassemble)
                 return;
@@ -719,6 +780,8 @@ int     umac_init(void *ram_base, void *rom_base, disc_descr_t discs[DISC_NUM_DR
 {
         _ram_base = ram_base;
         _rom_base = rom_base;
+        umac_is_se = rom_is_se(rom_base);
+        adb_reset();
 
 	m68k_init();
 	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
@@ -732,6 +795,7 @@ int     umac_init(void *ram_base, void *rom_base, disc_descr_t discs[DISC_NUM_DR
                               .irq_set = via_irq_set,
         };
         via_init(&vcb);
+        via_timers_enable(umac_is_se, umac_eclock);   /* SE: real VIA timers (Time Manager) */
         struct scc_cb scb = { .irq_set = scc_irq_set,
                               .tx_ready = scc_tx_ready,
                               .tx = scc_tx,
@@ -844,7 +908,9 @@ static void     mouse_tick(void)
  */
 void    umac_mouse_abs(int x, int y, int button)
 {
-        via_mouse_pressed = button;
+        if (umac_is_se && (!!button) != via_mouse_pressed)
+                adb_mouse_button(button);       /* SE: the button travels over ADB */
+        via_mouse_pressed = !!button;
         if (overlay)
                 return;
         if (x < 0) x = 0;
@@ -903,6 +969,7 @@ void    umac_reset(void)
         rtc_mode = 0; rtc_bits = 0; rtc_outbit = -1;
         pending_mouse_deltax = pending_mouse_deltay = 0;
         scc_irq_state = 0;
+        adb_reset();
         m68k_set_virq(1, 0);
         m68k_set_virq(2, 0);
         m68k_pulse_reset();
@@ -919,18 +986,38 @@ void    umac_disc_ejected(void)
 /* Run the emulator for about a frame.
  * Returns 0 for not-done, 1 when an exit/done condition arises.
  */
+static uint64_t umac_eclock(void)
+{
+        return (global_time_us * 8 + (in_exec ? (uint64_t)m68k_cycles_run() : 0)) / 10;
+}
+
 int     umac_loop(void)
 {
         setjmp(main_loop_jb);
+        in_exec = 0;
 
         const int us = UMAC_EXECLOOP_QUANTUM;
-        m68k_execute(us*8);
-        global_time_us += us;
+        if (umac_is_se) {
+                /* ADB answers about 0.7 ms after each bus state change, so run the
+                 * CPU in short slices and let ADB act in between */
+                for (int t = 0; t < us; t += 500) {
+                        in_exec = 1;
+                        m68k_execute(500*8);
+                        in_exec = 0;
+                        global_time_us += 500;
+                        adb_tick(global_time_us);
+                        via_tick(global_time_us);
+                }
+        } else {
+                m68k_execute(us*8);
+                global_time_us += us;
+        }
 
         // Device polling
         via_tick(global_time_us);
         mouse_tick();
-        kbd_check_work();
+        if (!umac_is_se)
+                kbd_check_work();
         scc_poll();
 
 	return sim_done;

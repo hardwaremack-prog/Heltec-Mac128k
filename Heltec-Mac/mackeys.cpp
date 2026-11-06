@@ -4,6 +4,7 @@
 extern "C" {
 #include "src/core/umac.h"
 }
+#include "src/core/adb.h"
 
 MacKeys macKeys;
 
@@ -123,7 +124,22 @@ int MacKeys::pendingText() const { return (tHead - tTail + TN) % TN; }
 void MacKeys::releaseAll() { releaseReq = true; }
 
 // ---------------------------------------------------------------- emulator side
-bool MacKeys::wireFree(int n) const { return (WN - 1 - (wHead - wTail + WN) % WN) >= n; }
+bool MacKeys::wireFree(int n) const {
+  if (umac_is_se) return adb_room() >= n;   // Mac SE: keys go to the ADB keyboard
+  return (WN - 1 - (wHead - wTail + WN) % WN) >= n;
+}
+
+// Mac SE (ADB): key codes are the same as the Plus keyboard's, except the arrow keys,
+// which the Plus sent from its keypad
+static uint8_t adbCode(uint8_t code) {
+  switch (code) {
+    case KP_LEFT: return 0x3B;
+    case KP_RIGHT: return 0x3C;
+    case KP_DOWN: return 0x3D;
+    case KP_UP: return 0x3E;
+  }
+  return code;
+}
 
 // Keyboard wire format (M0110 protocol): main keys are (code << 1) | 1, bit 7 set on release.
 // Keypad keys (codes 0x40-0x7F) are sent as 0x79 followed by ((code - 0x40) << 1) | 1.
@@ -132,6 +148,7 @@ void MacKeys::sendCode(uint8_t code, bool down) {
   if (down && held[code]) return;          // client auto-repeat: the Mac repeats by itself
   if (!down && !held[code]) return;
   held[code] = down;
+  if (umac_is_se) { adb_key(adbCode(code), down); return; }
   if (code >= 0x40) {
     wire[wHead] = 0x79; wHead = (wHead + 1) % WN;
     wire[wHead] = (uint8_t)((((code - 0x40) << 1) | 1) | (down ? 0 : 0x80)); wHead = (wHead + 1) % WN;
@@ -184,7 +201,7 @@ void MacKeys::service() {
   if (wHead == wTail && tTail != tHead) {
     if (typeChar((uint8_t)text[tTail])) tTail = (tTail + 1) % TN;
   }
-  if (wHead != wTail && umac_kbd_ready()) {
+  if (!umac_is_se && wHead != wTail && umac_kbd_ready()) {
     umac_kbd_event(wire[wTail], 1);   // raw wire byte (down=1 leaves it unchanged)
     wTail = (wTail + 1) % WN;
   }

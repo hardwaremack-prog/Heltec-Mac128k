@@ -1,9 +1,19 @@
 // The web page: live Mac screen with sound (WebSocket on port 81) + setup (ROM, disk, Wi-Fi)
 #pragma once
+#include "heltec_config.h"
 #include "macfiles_js.h"   // script URLs carry a version, so a new firmware never runs with an old cached script
+#ifdef HELTEC_V4
+#define ROM_HELP "Your own ROM: the Mac SE FDHD ROM (256 KB, checksum B306E171) or Mac SE ROM (B2E362A8) makes this a 1 MB Mac SE with an ADB keyboard and mouse, running System 4 to 6 from 800K and 1.44 MB disks. The Mac Plus v3 (4D1F8172) and Mac 128K/512K (28BA61CE) ROMs work too. ROMs aren't included."
+#define RAM_OPTIONS "<option>1024</option><option>512</option><option>256</option><option>128</option>"
+#define DISK_HINT "With the SE ROM, use System 4.1 to 6.0.8 disks: 800K or 1.44 MB HFS (or 400K MFS with System 3.2 or later)."
+#else
+#define ROM_HELP "Your own ROM: the Mac Plus v3 ROM (128 KB, checksum 4D1F8172), or the original Mac 128K/512K ROM (64 KB, checksum 28BA61CE), which leaves more room for apps like MacPaint 1.x on this 128K Mac. ROMs aren't included."
+#define RAM_OPTIONS "<option>256</option><option>128</option>"
+#define DISK_HINT "Early 400K disks (System 1&ndash;3) fit this Mac best."
+#endif
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Heltec-Mac</title>
+<title>)HTML" BOARD_NAME R"HTML(</title>
 <style>
 :root{--bg:#d9d6cf;--panel:#f4f2ec;--ink:#1d1d1b;--mute:#6b6862;--line:#b9b5ac;--accent:#2f5f8a;--bad:#a33}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -34,7 +44,7 @@ section.wide{grid-column:1/-1}
 .disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \2022  in use';color:var(--accent);font-weight:600}
 textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
 </style></head><body>
-<header><div id="dot"></div><b>HELTEC-MAC</b><span id="hdr">connecting...</span></header>
+<header><div id="dot"></div><b>)HTML" BOARD_HEADER R"HTML(</b><span id="hdr">connecting...</span></header>
 <main>
 <div id="screenBox">
  <div id="bezel"><canvas id="scr" width="512" height="342" tabindex="0"></canvas></div>
@@ -56,12 +66,12 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 <div class="grid">
 <section><h2>Status</h2><dl id="st"></dl><p id="msg"></p></section>
 <section><h2>Mac ROM</h2>
- <p class="mute">Your own ROM: the Mac Plus v3 ROM (128 KB, checksum 4D1F8172), or the original Mac 128K/512K ROM (64 KB, checksum 28BA61CE), which leaves more room for apps like MacPaint 1.x on this 128K Mac. ROMs aren't included.</p>
+ <p class="mute">)HTML" ROM_HELP R"HTML(</p>
  <p id="romState"></p>
  <input type="file" id="romFile"> <button id="romUp" class="primary">Upload ROM</button>
 </section>
 <section class="wide"><h2>Disks</h2>
- <p class="mute">Your disks are kept on the board. Click <b>Use</b> to start the Mac from one. Add disk images (.img, .dsk, DiskCopy .image) or archives with disks or programs inside (.zip, .7z, .sit incl. StuffIt 5, .hqx, .bin, .gz); archives are unpacked here in your browser. Early 400K disks (System 1&ndash;3) fit this Mac best.</p>
+ <p class="mute">Your disks are kept on the board. Click <b>Use</b> to start the Mac from one. Add disk images (.img, .dsk, DiskCopy .image) or archives with disks or programs inside (.zip, .7z, .sit incl. StuffIt 5, .hqx, .bin, .gz); archives are unpacked here in your browser. )HTML" DISK_HINT R"HTML(</p>
  <div id="lib"></div>
  <p id="libFree" class="mute"></p>
  <div class="bar" style="justify-content:flex-start"><input type="file" id="diskFile"> <button id="diskUp" class="primary">Add</button>
@@ -74,7 +84,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="progAdd" class="primary">Add to the disk in use</button></div>
 </section>
 <section><h2>Machine</h2>
- <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option><option>256</option><option>128</option></select></label>
+ <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option>)HTML" RAM_OPTIONS R"HTML(</select></label>
  <p class="mute">On the Heltec V3, 128 KB is what fits next to Wi-Fi (a real Mac 128K). 256 KB is used only if there's room. With the Mac 128K ROM, 128 KB runs 1984 software like MacPaint and MacWrite.</p>
  <div class="bar" style="justify-content:flex-start"><button id="ramSet">Apply (restarts the board)</button><button id="turbo">Turbo: off</button></div>
 </section>
@@ -267,7 +277,7 @@ window.addEventListener('resize',fitScreen);document.addEventListener('fullscree
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
 $('bReboot').onclick=async()=>{if(!confirm('Restart the whole Heltec board? The disk is saved first; unsaved work on the Mac is lost.'))return;
- try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin Heltec-Mac-Setup by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
+ try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin )HTML" BOARD_AP_SSID R"HTML( by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
 $('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The disk is saved first. Press PRG (or RST) on the board to wake it.'))return;
  try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press PRG (or RST) on the board to wake it; this page reconnects by itself.');
  await new Promise(r=>setTimeout(r,4000));
@@ -280,14 +290,14 @@ function kb(n){return Math.round(n/1024)+' KB'}
 let boardWasDown=false,asleep=false;
 async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
  if(boardWasDown){boardWasDown=false;reconnect()}
- const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of a Mac Plus'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
+ const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of real speed'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
   ['Battery',s.batText||'-'],['Up',s.uptime!==undefined?(s.uptime<120?s.uptime+' s':Math.round(s.uptime/60)+' min')+' · last start: '+s.reset:'-'],['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
  $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'')+(s.bat>0&&s.bat<=4300?' · battery '+s.batPct+'%':'');
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
- $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join Heltec-Mac-Setup, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
+ $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join )HTML" BOARD_AP_SSID R"HTML(, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
 }catch(e){boardWasDown=true;if(asleep)$('hdr').textContent='Asleep · press PRG on the board to wake it'}}
 // After a restart, don't reload the page (that would lose the sound you switched on with your
 // click); wait for the board to answer again. The screen reconnects by itself, and the board
@@ -338,7 +348,7 @@ $('diskUp').onclick=async()=>{const f=$('diskFile').files[0];if(!f){msg('Pick a 
  $('diskPick').hidden=true;$('progPick').hidden=true;msg('Opening '+f.name+'...');
  try{const r=await MacFiles.open(f.name,new Uint8Array(await f.arrayBuffer()));found=r.disks;progs=r.files||[];
   if(!found.length&&!progs.length){let t='No Mac disk or program found in '+f.name+'.';
-   if(r.other.length==1&&r.other[0]==f.name)t=f.name+' isn\'t a Mac disk image or an archive Heltec-Mac can open.';
+   if(r.other.length==1&&r.other[0]==f.name)t=f.name+' isn\'t a Mac disk image or an archive )HTML" BOARD_NAME R"HTML( can open.';
    if(r.notes.length)t+=' '+r.notes.join(' ');msg(t,1);return}
   if(found.length==1&&!progs.length){await sendDisks(found,true);return}
   if(found.length){$('diskList').innerHTML=found.map((d,i)=>'<label><input type="checkbox" name="dpick" value="'+i+'" checked> <span>'+diskLabel(d)+'</span></label>').join('');$('diskPick').hidden=false}

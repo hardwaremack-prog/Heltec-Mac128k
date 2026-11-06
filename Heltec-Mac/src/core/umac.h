@@ -49,8 +49,12 @@ void     umac_set_time_now(uint32_t mac_seconds);
 /* Printer port (serial port B): ready() == 0 makes the Mac wait; out() gets each byte */
 void     umac_set_printer(int (*ready)(void), void (*out)(uint8_t b));
 
+extern int umac_is_se;
+void      adb_sixtieth(void);
 static inline void      umac_vsync_event(void)
 {
+        if (umac_is_se)
+                adb_sixtieth();         /* ADB: tell the Mac if a key or click is waiting */
         via_caX_event(2);
 }
 

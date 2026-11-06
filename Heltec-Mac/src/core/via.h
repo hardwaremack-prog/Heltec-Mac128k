@@ -45,4 +45,9 @@ void    via_tick(uint64_t time);
 void    via_caX_event(int ca);
 void    via_sr_rx(uint8_t val);
 
+uint8_t via_ddrb(void);
+/* Heltec-Mac: real VIA timers (used for the Mac SE); eclock() = E-clock ticks now */
+void    via_timers_enable(int on, uint64_t (*eclock)(void));
+uint8_t via_sr_shift_out(void);
+
 #endif
