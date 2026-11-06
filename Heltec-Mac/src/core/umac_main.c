@@ -920,6 +920,13 @@ void    umac_mouse_abs(int x, int y, int button)
         /* Point is stored v,h (y then x) */
         RAM_WR16(0x828, y);  RAM_WR16(0x82a, x);     /* MTemp */
         RAM_WR16(0x82c, y);  RAM_WR16(0x82e, x);     /* RawMouse */
+        if (umac_is_se) {
+                /* The SE ROM's cursor task moves the cursor by (MTemp - RawMouse), scaled for
+                 * mouse acceleration, and leaves Mouse alone when that is zero.  With an
+                 * absolute mouse there is no delta, so set Mouse too: the task then just
+                 * redraws the cursor where we put it. */
+                RAM_WR16(0x830, y);  RAM_WR16(0x832, x);     /* Mouse */
+        }
         RAM_WR8(0x8ce, RAM_RD8(0x8cf));               /* CrsrNew = CrsrCouple */
 }
 

@@ -29,7 +29,7 @@ canvas:focus{box-shadow:0 0 0 3px #8fb3d6}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
 button,.btn{font:inherit;padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);cursor:pointer}
 button:hover{border-color:var(--accent)}button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}button.sure{background:var(--bad);color:#fff;border-color:var(--bad)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}button.sure{background:var(--bad);color:#fff;border-color:var(--bad)}button:disabled{opacity:.45;cursor:default;border-color:var(--line)}
 .hint{color:var(--mute);font-size:13px;text-align:center}
 #prn{display:none;margin:10px auto 0;max-width:640px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px}#prn.on{display:block}#prn .job{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:4px 0}#prn .job b{flex:1 1 200px}#prn .job+.job{border-top:1px solid var(--line)}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
@@ -56,6 +56,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bSize" title="Auto picks sharp when it's big enough. Sharp: every Mac pixel is exactly 2x2 or 3x3 screen pixels. Fill: uses all the space, slightly soft.">Pixels: auto</button>
   <button id="bFull">Full screen</button>
   <button id="bReset">Restart Mac</button>
+  <button id="bNoDisk" title="Takes the disk out and restarts the Mac with an empty drive. Pick a disk under Disks to start from it again.">No disk</button>
   <button id="bReboot" title="Restarts the whole Heltec board, like pressing RST. The disk is saved first.">Restart board</button>
   <button id="bSleep" title="Puts the Heltec board into deep sleep. Press PRG (or RST) on the board to wake it.">Sleep board</button>
  </div>
@@ -283,6 +284,7 @@ $('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The di
  await new Promise(r=>setTimeout(r,4000));
  for(;;){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok)break}catch(e){}await new Promise(r=>setTimeout(r,2000))}
  asleep=false;reconnect();await status();msg('Awake. Starting the Mac...');setTimeout(()=>msg(''),4000)};
+$('bNoDisk').onclick=async()=>{if(confirm('Restart the Mac with no disk? Unsaved work on the Mac is lost.')){try{await post('/api/use?i=-1');msg('The Mac restarted with no disk.');setTimeout(()=>msg(''),4000)}catch(err){msg(err.message,1)}status()}};
 $('bReset').onclick=async()=>{if(confirm('Restart the Mac? Unsaved work on the Mac is lost.')){await post('/api/reset');msg('Mac restarted')}};
 
 // ---------- status + settings
@@ -319,7 +321,8 @@ function renderLib(s){const L=s.lib||[];
  $('lib').innerHTML=L.length?L.map(d=>'<div class="disk'+(d.i==s.active?' cur':'')+'"><div class="nm"><b>'+esc(d.n.replace(/\.img$/i,''))+'</b><br><span class="mute">'+kb(d.s)+(d.d?' &middot; '+esc(d.d):'')+'</span></div>'+
   (d.i==s.active?'':'<button data-use="'+d.i+'" class="primary">Use</button>')+'<a class="btn" href="/api/disk.img?i='+d.i+'">Download</a><button data-del="'+d.i+'"'+(pendingDel==d.i?' class="sure">Sure?':'>Remove')+'</button></div>').join(''):
   '<p class="mute">No disks yet. Add one below.</p>';
- if(L.length)$('lib').innerHTML+='<div class="disk'+(s.active<0?' cur':'')+'"><div class="nm"><b>No disk</b><br><span class="mute">Starts the Mac with an empty drive: it waits at a floppy icon, like a real Mac with no disk in</span></div>'+(s.active<0?'':'<button data-use="-1">Use</button>')+'</div>';
+ $('bNoDisk').disabled=s.active<0;
+ if(L.length)$('lib').insertAdjacentHTML('afterbegin','<div class="disk'+(s.active<0?' cur':'')+'"><div class="nm"><b>No disk</b><br><span class="mute">Starts the Mac with an empty drive: it waits at a floppy icon, like a real Mac with no disk in</span></div>'+(s.active<0?'':'<button data-use="-1">Use</button>')+'</div>');
  $('libFree').textContent=kb(s.libFree||0)+' free for more disks'}
 $('lib').onclick=async e=>{const u=e.target.dataset.use,d=e.target.dataset.del;
  if(u!==undefined){try{await post('/api/use?i='+u);msg(u=='-1'?'The Mac restarted with no disk.':'The Mac restarted from that disk.');setTimeout(()=>msg(''),4000)}catch(err){msg(err.message,1)}status()}

@@ -16,7 +16,8 @@ as a crisp 2×2 block. Battery level and the board's controls sit right on the p
 ## New: Heltec-Mac SE for the Heltec V4
 
 The **Heltec WiFi LoRa 32 V4** has 2 MB of PSRAM and 16 MB of flash, enough for a real
-**1 MB Macintosh SE**. Flash [`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html),
+**1 MB Macintosh SE**. It now has its own home:
+**[Heltec-Mac-SE](https://github.com/hardwaremack-prog/Heltec-Mac-SE)**. Flash [`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html),
 upload the **Mac SE FDHD** (B306E171) or **Mac SE** (B2E362A8) ROM, and it boots System 4 to 6
 from **800K and 1.44 MB HFS** disks.
 
@@ -171,6 +172,7 @@ Open `http://<board address>` (or `http://heltec-mac.local`) and click the Mac s
   and your choice is remembered.
 - **Pixels:** **Auto** keeps the screen razor sharp when there's room, **Fill** uses all the
   space. **Full screen** gives you just the Mac.
+- **No disk** takes the disk out and restarts the Mac with an empty drive.
 - **Restart Mac** works like the Mac's reset switch. **Restart board** restarts the whole
   Heltec, like pressing RST; on the hotspot it comes straight back as the hotspot, but your
   device may need a moment (or a tap in its Wi‑Fi list) to rejoin it. **Sleep board** puts it
