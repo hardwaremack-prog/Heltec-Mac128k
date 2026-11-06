@@ -265,7 +265,7 @@ $('backup').onclick = async () => {
     const d = new Date(), stamp = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
-    a.download = `heltec-mac-backup-${stamp}.bin`; document.body.appendChild(a); a.click(); a.remove();
+    a.download = `%%BACKUP%%-${stamp}.bin`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     set('backupMsg', `Backup saved as ${a.download} (${mb} MB, verified). The board is untouched.`, 'ok');
     busy(false);

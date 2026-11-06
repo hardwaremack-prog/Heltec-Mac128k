@@ -1,8 +1,8 @@
-# Heltec-Mac
+# Heltec V3 Mac 128K
 
 **A 1984 Macintosh running on a Meshtastic radio board, played in your web browser, with sound.**
 
-Heltec-Mac turns a **Heltec WiFi LoRa 32 V3** (the little ESP32-S3 board many people use for
+Heltec V3 Mac 128K (Heltec-Mac for short) turns a **Heltec WiFi LoRa 32 V3** (the little ESP32-S3 board many people use for
 Meshtastic) into a working Macintosh 128K. The board emulates the Mac's 68000 processor and its
 hardware, keeps a library of floppy disks in its own flash, and serves the Mac's screen and
 sound to any browser on your network. There's no app to install: open the board's address on a
@@ -13,17 +13,17 @@ PC, a Raspberry Pi or a phone, and you're at the Finder.
 *The 1985 maze game Amazing, running on the board and viewed in Chrome. Every Mac pixel is drawn
 as a crisp 2×2 block. Battery level and the board's controls sit right on the page.*
 
-## New: Heltec-Mac SE for the Heltec V4
+## Have a V4? Heltec V4 Mac SE
 
 The **Heltec WiFi LoRa 32 V4** has 2 MB of PSRAM and 16 MB of flash, enough for a real
 **1 MB Macintosh SE**. It now has its own home:
-**[Heltec-Mac-SE](https://github.com/hardwaremack-prog/Heltec-Mac-SE)**. Flash [`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html),
+**[Heltec-V4-Mac-SE](https://github.com/hardwaremack-prog/Heltec-V4-Mac-SE)**. Flash [`flasher/Heltec-V4-Mac-SE-Flasher.html`](flasher/Heltec-V4-Mac-SE-Flasher.html),
 upload the **Mac SE FDHD** (B306E171) or **Mac SE** (B2E362A8) ROM, and it boots System 4 to 6
 from **800K and 1.44 MB HFS** disks.
 
 ![A Mac SE with 1 MB running System 4.2 and Finder 6.0 on a Heltec V4](docs/heltec-mac-se.png)
 
-*Heltec-Mac SE on a V4: System 4.2, Finder 6.0, 1,024K of memory.*
+*Heltec V4 Mac SE: System 4.2, Finder 6.0, 1,024K of memory.*
 
 What's different on the V4:
 
@@ -35,7 +35,7 @@ What's different on the V4:
 - **The Plus and 128K ROMs work too**, with up to 1 MB on the V4.
 - Everything else is the same: the browser page with sound, the clock, print to PDF (choose the
   ImageWriter in the Chooser first, as on a real SE), battery, sleep, backup and clone.
-- Its hotspot is **Heltec-MacSE-Setup** (password **heltecmac**) and it answers to
+- Its hotspot is **Heltec-V4-MacSE-Setup** (password **heltecmac**) and it answers to
   **heltec-macse.local**, so a V3 and a V4 can share a network.
 
 ![Printed from TeachText on the Mac SE](docs/se-printout.png)
@@ -91,29 +91,29 @@ ready to copy onto the disk in use.*
 
 ## What you need
 
-- A **Heltec WiFi LoRa 32 V3** (ESP32-S3, 8 MB flash) for Heltec-Mac, or a **Heltec WiFi LoRa 32
-  V4** (2 MB PSRAM, 16 MB flash) for Heltec-Mac SE, and a USB-C cable that carries data
+- A **Heltec WiFi LoRa 32 V3** (ESP32-S3, 8 MB flash) for Heltec V3 Mac 128K, or a **Heltec WiFi LoRa 32
+  V4** (2 MB PSRAM, 16 MB flash) for Heltec V4 Mac SE, and a USB-C cable that carries data
 - **Chrome or Edge** on a computer, for flashing
 - Your own **Mac ROM** and **disk images**. Apple's software isn't included.
 
-> Flashing Heltec-Mac replaces Meshtastic on the board. To go back, reflash Meshtastic from
+> Flashing it replaces Meshtastic on the board. To go back, reflash Meshtastic from
 > flasher.meshtastic.org.
 
 ## Quick start
 
 ### 1. Flash the board
 
-Download [`flasher/Heltec-Mac-Flasher.html`](flasher/Heltec-Mac-Flasher.html) (V3) or
-[`flasher/Heltec-Mac-V4-Flasher.html`](flasher/Heltec-Mac-V4-Flasher.html) (V4) and open it in
+Download [`flasher/Heltec-V3-Mac128k-Flasher.html`](flasher/Heltec-V3-Mac128k-Flasher.html) (V3) or
+[`flasher/Heltec-V4-Mac-SE-Flasher.html`](flasher/Heltec-V4-Mac-SE-Flasher.html) (V4) and open it in
 Chrome or Edge. The firmware is built into the page. Plug in the board, click **Connect**, pick
 it from the list, and click **Flash**. The page checks the write and restarts the board. If
 anything goes wrong, the page walks you through the usual fixes (USB driver, cable, download
 mode), and **Watch the board start** shows the board's own startup log.
 
-![The Heltec-Mac Flasher, with the backup and clone section](docs/flasher.png)
+![The Heltec V3 Mac 128K Flasher, with the backup and clone section](docs/flasher.png)
 
-Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-Mac.bin` (V3) or
-`firmware/Heltec-Mac-V4.bin` (V4). The V4 uses the ESP32-S3's own USB, so it needs no driver.
+Prefer the command line? `esptool --chip esp32s3 write-flash 0x0 firmware/Heltec-V3-Mac128k.bin` (V3) or
+`firmware/Heltec-V4-Mac-SE.bin` (V4). The V4 uses the ESP32-S3's own USB, so it needs no driver.
 
 Updating later keeps your ROM, disks and Wi‑Fi settings.
 
@@ -125,13 +125,13 @@ The file holds your Wi‑Fi password and your ROM, so keep it private.
 
 ### 2. Put it on your Wi‑Fi
 
-The first time, the board makes its own hotspot: **Heltec-Mac-Setup**, password **heltecmac**.
+The first time, the board makes its own hotspot: **Heltec-V3-Mac-Setup**, password **heltecmac**.
 Join it, open **http://192.168.4.1**, pick your network under **Wi‑Fi**, and click
 **Save & restart**. The OLED then shows the board's address on your network. It also answers
 to **heltec-mac.local** on most computers.
 
 No Wi‑Fi around? You can also use the Mac straight from the hotspot: join
-**Heltec-Mac-Setup** and type **http://192.168.4.1** into your browser (the `.local` name
+**Heltec-V3-Mac-Setup** and type **http://192.168.4.1** into your browser (the `.local` name
 only works on your home network). Your phone or laptop may say the hotspot has no internet;
 The board answers your device's "am I online?" check, so it stays on the hotspot instead of
 switching to another network. When it starts the hotspot, the board picks the quietest
@@ -291,7 +291,7 @@ The ESP32-S3 has two processor cores and 512 KB of RAM:
 ## Limitations
 
 - On the V3 the Mac has 128 KB of RAM, because that's what the board can spare. System 1 to 3
-  software runs; System 4 and later doesn't. For that, use a V4 (Heltec-Mac SE, 1 MB).
+  software runs; System 4 and later doesn't. For that, use a V4 (Heltec V4 Mac SE, 1 MB).
 - On the V4, how fast the Mac runs depends on the PSRAM, which is slower than the ESP32's own
   memory; **Turbo** (under Machine) lets it run flat out. **Add to the disk in use** only
   copies programs onto 400K MFS disks for now, not HFS ones.

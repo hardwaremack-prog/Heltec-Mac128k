@@ -1,19 +1,19 @@
 # Builds a one-page flasher: the template + esptool-js (Apache-2.0, Espressif) + the firmware.
 #   npm install esptool-js@0.5.7
-#   python3 make_flasher.py node_modules/esptool-js/bundle.js ../firmware/Heltec-Mac.bin          -> Heltec-Mac-Flasher.html (V3)
-#   python3 make_flasher.py node_modules/esptool-js/bundle.js ../firmware/Heltec-Mac-V4.bin --v4  -> Heltec-Mac-V4-Flasher.html
+#   python3 make_flasher.py node_modules/esptool-js/bundle.js ../firmware/Heltec-V3-Mac128k.bin -> Heltec-V3-Mac128k-Flasher.html
+#   python3 make_flasher.py node_modules/esptool-js/bundle.js ../firmware/Heltec-V4-Mac-SE.bin --v4 -> Heltec-V4-Mac-SE-Flasher.html
 import sys, base64, re, hashlib
 bundle, fw = sys.argv[1], sys.argv[2]
 v4 = '--v4' in sys.argv[3:]
 BOARDS = {
-  False: dict(NAME='Heltec-Mac', BOARD='Heltec WiFi LoRa 32 V3', SHORT='Heltec V3', AP='Heltec-Mac-Setup', FLASHMB='8',
+  False: dict(NAME='Heltec V3 Mac 128K', BOARD='Heltec WiFi LoRa 32 V3', SHORT='Heltec V3', AP='Heltec-V3-Mac-Setup', FLASHMB='8',
               PORTHELP='Click <b>Connect</b> and pick the board. On Windows it shows as <b>CP210x</b> or <b>Silicon Labs</b> (COM port); on a Mac, <b>usbserial</b>.',
               DRIVERHELP='Windows needs the <b>CP210x USB to UART</b> driver from Silicon Labs (silabs.com, search "CP210x VCP drivers"). After installing, unplug and replug the board.',
-              WRONGBOARD='', OUT='Heltec-Mac-Flasher.html'),
-  True:  dict(NAME='Heltec-Mac SE', BOARD='Heltec WiFi LoRa 32 V4', SHORT='Heltec V4', AP='Heltec-MacSE-Setup', FLASHMB='16',
+              WRONGBOARD='', BACKUP='heltec-v3-mac-backup', OUT='Heltec-V3-Mac128k-Flasher.html'),
+  True:  dict(NAME='Heltec V4 Mac SE', BOARD='Heltec WiFi LoRa 32 V4', SHORT='Heltec V4', AP='Heltec-V4-MacSE-Setup', FLASHMB='16',
               PORTHELP='Click <b>Connect</b> and pick the board. The V4 uses the ESP32-S3&apos;s own USB: on Windows it shows as <b>USB JTAG/serial debug unit</b> or <b>USB Serial Device</b> (COM port); on a Mac, <b>usbmodem</b>.',
               DRIVERHELP='The V4 needs no extra driver: it uses the ESP32-S3&apos;s own USB. If it doesn&apos;t show up, put it in download mode (hold <kbd>PRG</kbd>, tap <kbd>RST</kbd>, let go) and click Connect again.',
-              WRONGBOARD='Is this a V3? Use Heltec-Mac-Flasher.html for the V3.', OUT='Heltec-Mac-V4-Flasher.html'),
+              WRONGBOARD='Is this a V3? Use Heltec-V3-Mac128k-Flasher.html for the V3.', BACKUP='heltec-v4-macse-backup', OUT='Heltec-V4-Mac-SE-Flasher.html'),
 }[v4]
 js = open(bundle, encoding='utf-8').read()
 m = re.search(r'export\{([^}]*)\};?\s*$', js)
