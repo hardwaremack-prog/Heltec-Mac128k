@@ -2,6 +2,8 @@
 
 **A 1984 Macintosh running on a Meshtastic radio board, played in your web browser, with sound.**
 
+**Flash it from your browser:** [hardwaremack-prog.github.io/Heltec-V3-Mac128k/](https://hardwaremack-prog.github.io/Heltec-V3-Mac128k/) (Chrome or Edge on a computer).
+
 Heltec V3 Mac 128K (Heltec-Mac for short) turns a **Heltec WiFi LoRa 32 V3** (the little ESP32-S3 board many people use for
 Meshtastic) into a working Macintosh 128K. The board emulates the Mac's 68000 processor and its
 hardware, keeps a library of floppy disks in its own flash, and serves the Mac's screen and
